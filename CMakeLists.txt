@@ -38,8 +38,9 @@ find_program(VERILATOR_BIN verilator REQUIRED)
 # ---------------------------------------------------------------------------
 set(RTL_SOURCES
     # Phase 1: core primitives
-    # ${CMAKE_CURRENT_SOURCE_DIR}/rtl/common/db_pkg.sv
-    # ${CMAKE_CURRENT_SOURCE_DIR}/rtl/interfaces/axis_fifo.sv
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/common/db_pkg.sv
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/interfaces/axis_fifo.sv
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/interfaces/axis_register.sv
 )
 
 # ---------------------------------------------------------------------------
@@ -47,15 +48,21 @@ set(RTL_SOURCES
 # Format: "<tb_name>;<verilated_top_module>"
 # ---------------------------------------------------------------------------
 set(DBQA_TBS
-    # Phase 1: tb_fifo;axis_fifo
+    "tb_fifo\;axis_fifo_multi"
 )
+
+# Testbench-specific extra SystemVerilog sources (e.g. test wrappers).
+# Format: set(DBQA_TB_EXTRA_<tb_name> <file>...)
+set(DBQA_TB_EXTRA_tb_fifo ${CMAKE_CURRENT_SOURCE_DIR}/sim/axis_fifo_multi.sv)
 
 # ---------------------------------------------------------------------------
 # Common Verilator flags for every simulation testbench.
 # ---------------------------------------------------------------------------
 set(DBQA_VERILATOR_FLAGS
-    --binary        # --cc --exe --build  (compile + link an executable)
+    --cc --exe --build   # Verilate, compile and link the executable
     --timing        # enable $time / delays
+    --assert        # elaborate SVA assertions in the simulation
+    -DDBQA_ASSERT   # compile assertion blocks guarded by DBQA_ASSERT
     -Wall           # enable all lint warnings
     -Wno-fatal      # do not treat warnings as build failures
 )
@@ -77,7 +84,8 @@ function(dbqa_add_tb name top)
 
     set(mdir "${CMAKE_BINARY_DIR}/${name}")
     set(exe "${mdir}/V${name}")
-    set(srcs ${RTL_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/sim/${name}.cpp")
+    set(srcs ${RTL_SOURCES} ${DBQA_TB_EXTRA_${name}}
+             "${CMAKE_CURRENT_SOURCE_DIR}/sim/${name}.cpp")
 
     add_custom_command(
         OUTPUT "${exe}"

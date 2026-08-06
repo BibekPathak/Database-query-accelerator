@@ -1,0 +1,83 @@
+# ===========================================================================
+#  DBQA CI pipeline.
+#
+#  Stages (in order of dependency):
+#    1. format    Verible SystemVerilog format check
+#    2. lint      Verilator --lint-only over all RTL
+#    3. build     Verilator + C++20 testbench compilation
+#    4. test      CTest: every self-checking testbench
+#    5. formal    SymbiYosys formal proofs          (enabled Phase 10)
+#    6. synth     Vivado synthesis for XC7A35T      (enabled Phase 11)
+#
+#  Artifacts: benchmark CSVs, logs and formal/synth reports are uploaded
+#  so every PR carries a machine-readable verification record.
+# ===========================================================================
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Verible format check
+    runs-on: ubuntu-latest
+    # Enabled once RTL exists (Phase 1); Verible is pinned to a known release.
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+
+  lint:
+    name: Verilator lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+      - name: Lint RTL
+        run: make lint
+
+  build-test:
+    name: Build + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel "$(nproc)"
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Upload logs and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            build/**/*.log
+            results/
+          if-no-files-found: ignore
+
+  formal:
+    name: Formal verification
+    runs-on: ubuntu-latest
+    if: false  # enabled in Phase 10 (SymbiYosys)
+    steps: []
+
+  synth:
+    name: Vivado synthesis
+    runs-on: ubuntu-latest
+    if: false  # enabled in Phase 11 (Artix-7 XC7A35T)
+    steps: []

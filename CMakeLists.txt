@@ -1,0 +1,119 @@
+# ===========================================================================
+#  DBQA -- FPGA Database Query Accelerator
+#
+#  Canonical build system for the C++20 / Verilator testbenches.
+#
+#  Each simulation testbench is a small C++ program driving a Verilated DUT.
+#  Verilator compiles the SystemVerilog RTL to C++, then g++/clang++ compiles
+#  and links the testbench against it into a self-checking executable that is
+#  registered with CTest.
+#
+#  TBs that need RTL (DBQA_TBS) are only generated once RTL sources exist.
+#  The plain-C++ toolchain smoke test (tb_smoke) is always built.
+# ===========================================================================
+
+cmake_minimum_required(VERSION 3.20)
+
+project(dbqa_accelerator
+    VERSION 0.1.0
+    DESCRIPTION "FPGA Database Query Accelerator"
+    LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+add_compile_options(-Wall -Wextra)
+
+find_program(VERILATOR_BIN verilator REQUIRED)
+
+# ---------------------------------------------------------------------------
+# RTL sources.
+# Append each module as it lands (Phases 1-7). Order matters: packages and
+# interfaces must precede the modules that consume them.
+# ---------------------------------------------------------------------------
+set(RTL_SOURCES
+    # Phase 1: core primitives
+    # ${CMAKE_CURRENT_SOURCE_DIR}/rtl/common/db_pkg.sv
+    # ${CMAKE_CURRENT_SOURCE_DIR}/rtl/interfaces/axis_fifo.sv
+)
+
+# ---------------------------------------------------------------------------
+# Simulation testbenches.
+# Format: "<tb_name>;<verilated_top_module>"
+# ---------------------------------------------------------------------------
+set(DBQA_TBS
+    # Phase 1: tb_fifo;axis_fifo
+)
+
+# ---------------------------------------------------------------------------
+# Common Verilator flags for every simulation testbench.
+# ---------------------------------------------------------------------------
+set(DBQA_VERILATOR_FLAGS
+    --binary        # --cc --exe --build  (compile + link an executable)
+    --timing        # enable $time / delays
+    -Wall           # enable all lint warnings
+    -Wno-fatal      # do not treat warnings as build failures
+)
+
+set(DBQA_CXXFLAGS "-std=c++20")
+
+# ---------------------------------------------------------------------------
+# Add one Verilator-based simulation testbench.
+#
+#   dbqa_add_tb(<name> <top_module>)
+# ---------------------------------------------------------------------------
+function(dbqa_add_tb name top)
+    if(NOT name)
+        message(FATAL_ERROR "dbqa_add_tb: missing testbench name")
+    endif()
+    if(NOT top)
+        message(FATAL_ERROR "dbqa_add_tb(${name}): missing top module")
+    endif()
+
+    set(mdir "${CMAKE_BINARY_DIR}/${name}")
+    set(exe "${mdir}/V${name}")
+    set(srcs ${RTL_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/sim/${name}.cpp")
+
+    add_custom_command(
+        OUTPUT "${exe}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${mdir}"
+        COMMAND "${VERILATOR_BIN}" ${DBQA_VERILATOR_FLAGS}
+                --Mdir "${mdir}"
+                --top-module "${top}"
+                -CFLAGS "${DBQA_CXXFLAGS}"
+                ${srcs}
+                --exe -o "V${name}"
+        DEPENDS ${srcs}
+        COMMENT "Building testbench ${name}"
+        VERBATIM)
+
+    add_custom_target(${name} ALL DEPENDS "${exe}")
+    add_test(NAME ${name} COMMAND "${exe}")
+endfunction()
+
+# ---------------------------------------------------------------------------
+# Toolchain smoke test: pure C++20, no RTL. Proves the compiler, C++20 mode,
+# and CTest plumbing work before any RTL exists.
+# ---------------------------------------------------------------------------
+add_executable(tb_smoke "${CMAKE_CURRENT_SOURCE_DIR}/sim/tb_smoke.cpp")
+add_test(NAME tb_smoke COMMAND tb_smoke)
+
+# ---------------------------------------------------------------------------
+# Verilated testbenches. Only added once RTL sources exist.
+# ---------------------------------------------------------------------------
+if(RTL_SOURCES)
+    foreach(pair IN LISTS DBQA_TBS)
+        list(GET pair 0 tb_name)
+        list(GET pair 1 tb_top)
+        dbqa_add_tb(${tb_name} ${tb_top})
+    endforeach()
+else()
+    message(STATUS "No RTL sources yet; Verilated testbenches will be added in Phase 1+")
+endif()
+
+enable_testing()

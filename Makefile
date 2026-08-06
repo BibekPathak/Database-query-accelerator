@@ -19,11 +19,15 @@ SHELL := /bin/bash
 CMAKE     ?= cmake
 CTEST     ?= ctest
 VERILATOR ?= verilator
+VERIBLE   ?= verible-verilog-format
 
 BUILD_DIR ?= build
 
 RTL_DIR := rtl
 SIM_DIR := sim
+
+# All SystemVerilog sources that must stay Verible-formatted.
+SV_SOURCES := $(shell find rtl sim -name '*.sv')
 
 # ---------------------------------------------------------------------------
 # RTL sources.
@@ -43,7 +47,7 @@ RTL_SRCS := \
 TBS := tb_smoke tb_fifo
 
 # ---------------------------------------------------------------------------
-.PHONY: help all configure build sim test lint formal synth clean tb_%
+.PHONY: help all configure build sim test lint format format-check formal synth clean tb_%
 
 help:
 	@echo 'Usage: make [target]'
@@ -55,6 +59,8 @@ help:
 	@echo '  test          Alias for "sim"'
 	@echo '  tb_<name>     Build and run a single testbench, e.g. "make tb_fifo"'
 	@echo '  lint          Verilator --lint-only over all RTL sources'
+	@echo '  format        Reformat all SystemVerilog with Verible (inplace)'
+	@echo '  format-check  Verify all SystemVerilog matches Verible style'
 	@echo ''
 	@echo 'Formal and synthesis'
 	@echo '  formal        Run SymbiYosys formal proofs  (enabled in Phase 10)'
@@ -104,6 +110,21 @@ else
 lint:
 	@echo "No RTL sources registered yet (RTL_SRCS is empty); nothing to lint."
 endif
+
+# ---------------------------------------------------------------------------
+# Formatting (Verible). `format` rewrites in place; `format-check` only
+# verifies, and is the CI gate.
+# ---------------------------------------------------------------------------
+format:
+	$(VERIBLE) --inplace $(SV_SOURCES)
+
+format-check:
+	@for f in $(SV_SOURCES); do \
+		$(VERIBLE) --verify "$$f" || { \
+			echo "error: '$$f' is not Verible-formatted (run 'make format')"; \
+			exit 1; }; \
+	done
+	@echo "format-check: all SystemVerilog files are Verible-formatted"
 
 # ---------------------------------------------------------------------------
 # Formal verification and synthesis are wired up in later phases.

@@ -28,10 +28,19 @@ jobs:
   format:
     name: Verible format check
     runs-on: ubuntu-latest
-    # Enabled once RTL exists (Phase 1); Verible is pinned to a known release.
-    if: false
     steps:
       - uses: actions/checkout@v4
+      - name: Install Verible
+        run: |
+          VERIBLE_TAG=v0.0-4117-gdd17e7fe
+          VERIBLE_PKG=verible-${VERIBLE_TAG}-linux-static-x86_64
+          curl -sSL \
+            "https://github.com/chipsalliance/verible/releases/download/${VERIBLE_TAG}/${VERIBLE_PKG}.tar.gz" \
+            -o /tmp/verible.tar.gz
+          tar -xzf /tmp/verible.tar.gz -C /tmp
+          echo "/tmp/${VERIBLE_PKG}/bin" >> "${GITHUB_PATH}"
+      - name: Check formatting
+        run: make format-check
 
   lint:
     name: Verilator lint

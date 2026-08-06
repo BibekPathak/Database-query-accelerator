@@ -9,9 +9,11 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# SystemVerilog is canonicalized by Verible (verible-verilog-format), which
+# uses a 2-space indent inside module bodies; keep editors in agreement.
 [*.sv]
 indent_style = space
-indent_size = 4
+indent_size = 2
 
 [*.{cpp,h,hpp}]
 indent_style = space

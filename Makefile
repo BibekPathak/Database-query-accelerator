@@ -42,7 +42,9 @@ RTL_SRCS := \
 	rtl/memory/column_memory.sv \
 	rtl/memory/column_reader.sv \
 	rtl/operators/predicate_engine.sv \
-	rtl/operators/projection_engine.sv
+	rtl/operators/projection_engine.sv \
+	rtl/operators/count_engine.sv \
+	rtl/operators/sum_engine.sv
 
 # ---------------------------------------------------------------------------
 # Simulation testbenches. The canonical list lives in CMakeLists.txt

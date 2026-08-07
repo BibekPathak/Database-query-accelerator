@@ -48,6 +48,9 @@ set(RTL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/predicate_engine.sv
     # Phase 4: projection
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/projection_engine.sv
+    # Phase 5: aggregation
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/count_engine.sv
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/sum_engine.sv
 )
 
 # ---------------------------------------------------------------------------

@@ -86,10 +86,12 @@ package db_pkg;
   typedef logic [NUM_COLS-1:0][COLUMN_WIDTH-1:0] column_vector_t;
 
   // Pipeline beat: one row's columns plus the predicate pass/fail mask.
-  // Flows between stages over AXI-Stream.
+  // Flows between stages over AXI-Stream. Packed struct members are ordered
+  // most-significant-first, so `pass` is the MSB and the column vector stays
+  // word-aligned at the LSBs (columns[0] = bits [COLUMN_WIDTH-1:0]).
   typedef struct packed {
-    column_vector_t columns;
     logic           pass;     // 1 = row satisfied the WHERE clause
+    column_vector_t columns;
   } pipeline_data_t;
 
   // Projection mask: bit i set => column i is projected (SELECT list).

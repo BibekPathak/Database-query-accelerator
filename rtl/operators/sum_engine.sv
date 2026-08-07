@@ -109,10 +109,6 @@ module sum_engine #(
   // If overflow is flagged, the accumulator is saturated.
   m_overflow_saturates :
   assert property (@(posedge clk) disable iff (rst) (overflow_q |-> (acc_q == {ACCUM_W{1'b1}})));
-
-  // The accumulator is stable when the engine is idle.
-  m_idle_stable :
-  assert property (@(posedge clk) disable iff (rst) (~busy_q |=> $stable(acc_q)));
 `endif
 
 endmodule

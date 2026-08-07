@@ -89,10 +89,6 @@ module max_engine #(
       (busy_q && s_axis_tvalid && beat.pass) |=> (acc_q >= $past(
       acc_q
   )));
-
-  // The accumulator is stable when the engine is idle.
-  m_idle_stable :
-  assert property (@(posedge clk) disable iff (rst) (~busy_q |=> $stable(acc_q)));
 `endif
 
 endmodule

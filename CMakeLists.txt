@@ -53,6 +53,8 @@ set(RTL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/sum_engine.sv
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/min_engine.sv
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/max_engine.sv
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/avg_engine.sv
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/aggregation_top.sv
 )
 
 # ---------------------------------------------------------------------------

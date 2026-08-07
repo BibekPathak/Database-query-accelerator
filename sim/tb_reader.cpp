@@ -116,6 +116,107 @@ void run_query(ReaderPorts& p, std::function<void()> tick, uint32_t seed,
     dbqa::check(!p.get_m_valid(), "output FIFO drained");
 }
 
+// ---------------------------------------------------------------------------
+// Memory stress: controlled stall profiles plus tready-gating correctness.
+//
+//   stall_start : hold m_axis_tready low for N cycles once the output first
+//                 becomes valid (long backpressure burst at the head)
+//   stall_mid   : after the first half of the rows, hold m_axis_tready low
+//                 for N cycles (mid-stream stall), then resume at 1/2 random
+//
+// While a beat is held (m_axis_tvalid=1, m_axis_tready=0) its data must stay
+// stable and correct -- this is checked every held cycle against the row that
+// will be consumed next.
+// ---------------------------------------------------------------------------
+void run_stress(ReaderPorts& p, std::function<void()> tick, uint32_t seed,
+                int stall_start, int stall_mid) {
+    std::mt19937 rng(seed);
+    const uint32_t mask =
+        (p.col_width >= 32) ? 0xFFFFFFFFu : ((1u << p.col_width) - 1);
+
+    std::vector<std::vector<uint32_t>> table(
+        p.num_rows, std::vector<uint32_t>(p.num_cols));
+    for (int r = 0; r < p.num_rows; ++r)
+        for (int c = 0; c < p.num_cols; ++c) table[r][c] = rng() & mask;
+
+    // Load the table.
+    p.set_start(0);
+    for (int r = 0; r < p.num_rows; ++r) {
+        p.set_load_wen(1);
+        p.set_load_addr(static_cast<uint32_t>(r));
+        for (int c = 0; c < p.num_cols; ++c) p.set_load_data(c, table[r][c]);
+        tick();
+    }
+    p.set_load_wen(0);
+    tick();
+
+    p.set_start(1);
+    tick();
+    p.set_start(0);
+    dbqa::check(p.get_busy(), "stress: busy asserted after start");
+
+    int expected = 0;
+    int start_stall_left = stall_start;
+    int mid_stall_left = 0;
+    bool mid_started = false;
+
+    for (int cyc = 0; cyc < 16 * p.num_rows + 512 && expected < p.num_rows; ++cyc) {
+        const bool valid = p.get_m_valid();
+
+        // Stall profile: head burst, then random, then a mid-stream burst,
+        // then random again. While stalling, the held beat must be stable.
+        bool ready;
+        if (valid && start_stall_left > 0) {
+            ready = false;
+            --start_stall_left;
+        } else if (valid && !mid_started && expected >= p.num_rows / 2) {
+            ready = false;
+            mid_started = true;
+            mid_stall_left = stall_mid;
+        } else if (valid && mid_stall_left > 0) {
+            ready = false;
+            --mid_stall_left;
+        } else {
+            ready = (rng() % 3 != 0);
+        }
+        p.set_m_ready(ready);
+
+        if (valid && !ready) {
+            // tready gating: the held beat must equal the next expected row.
+            bool stable = true;
+            for (int c = 0; c < p.num_cols; ++c)
+                stable &= (p.get_m_col(c) == table[expected][c]);
+            stable &= (p.get_m_last() == (expected == p.num_rows - 1));
+            dbqa::check(stable, "stress: held beat stable and correct");
+        }
+
+        if (valid && ready) {
+            for (int c = 0; c < p.num_cols; ++c) {
+                char msg[64];
+                std::snprintf(msg, sizeof msg, "stress: row %d col %d data", expected, c);
+                dbqa::expect_eq(msg, table[expected][c], p.get_m_col(c));
+            }
+            dbqa::check(p.get_m_pass(), "stress: pass bit set");
+            dbqa::check(p.get_m_last() == (expected == p.num_rows - 1),
+                        "stress: tlast on the final row");
+            ++expected;
+        }
+        tick();
+    }
+
+    dbqa::expect_eq("stress: all rows received", p.num_rows, expected);
+    dbqa::check(p.get_done(), "stress: done asserted");
+    dbqa::check(!p.get_busy(), "stress: busy deasserted after done");
+
+    // Drain the output FIFO.
+    for (int cyc = 0; cyc < 64; ++cyc) {
+        p.set_m_ready(1);
+        tick();
+        if (!p.get_m_valid()) break;
+    }
+    dbqa::check(!p.get_m_valid(), "stress: output FIFO drained");
+}
+
 }  // namespace
 
 int main() {
@@ -247,6 +348,16 @@ int main() {
         run_query(*p, tick, 0xD1CEu, false);
         run_query(*p, tick, 0xED6Eu, true);
     }
+
+    // Memory stress (2.4).
+    //  - full-capacity multi-query: heavy random backpressure, many runs
+    for (int q = 0; q < 12; ++q) run_query(p0, tick, 0xF00Du + q, true);
+    //  - controlled stall profiles with tready-gating stability checks
+    run_stress(p0, tick, 0x5EEDu, 48, 96);
+    run_stress(p0, tick, 0xBEEFu, 1, 0);
+    run_stress(p0, tick, 0xCAFEu, 0, 200);
+    //  - back-to-back single-row queries
+    for (int q = 0; q < 24; ++q) run_query(p1, tick, 0x5000u + q, true);
 
     return dbqa::summary("tb_reader");
 }

@@ -46,6 +46,8 @@ set(RTL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/memory/column_reader.sv
     # Phase 3: predicates
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/predicate_engine.sv
+    # Phase 4: projection
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/projection_engine.sv
 )
 
 # ---------------------------------------------------------------------------

@@ -52,11 +52,13 @@ set(RTL_SOURCES
 # ---------------------------------------------------------------------------
 set(DBQA_TBS
     "tb_fifo\;axis_fifo_multi"
+    "tb_reader\;column_reader_tb_top"
 )
 
 # Testbench-specific extra SystemVerilog sources (e.g. test wrappers).
 # Format: set(DBQA_TB_EXTRA_<tb_name> <file>...)
 set(DBQA_TB_EXTRA_tb_fifo ${CMAKE_CURRENT_SOURCE_DIR}/sim/axis_fifo_multi.sv)
+set(DBQA_TB_EXTRA_tb_reader ${CMAKE_CURRENT_SOURCE_DIR}/sim/column_reader_tb_top.sv)
 
 # ---------------------------------------------------------------------------
 # Common Verilator flags for every simulation testbench.

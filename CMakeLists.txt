@@ -55,6 +55,7 @@ set(RTL_SOURCES
 set(DBQA_TBS
     "tb_fifo\;axis_fifo_multi"
     "tb_reader\;column_reader_tb_top"
+    "tb_predicate\;predicate_engine"
 )
 
 # Testbench-specific extra SystemVerilog sources (e.g. test wrappers).

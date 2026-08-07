@@ -54,7 +54,7 @@ RTL_SRCS := \
 # Simulation testbenches. The canonical list lives in CMakeLists.txt
 # (DBQA_TBS); TBS here drives the top-level "sim" aggregate only.
 # ---------------------------------------------------------------------------
-TBS := tb_smoke tb_fifo tb_reader tb_predicate tb_projection
+TBS := tb_smoke tb_fifo tb_reader tb_predicate tb_projection tb_aggregation
 
 # ---------------------------------------------------------------------------
 .PHONY: help all configure build sim test lint format format-check formal synth clean tb_%

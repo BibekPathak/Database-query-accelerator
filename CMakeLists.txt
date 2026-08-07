@@ -66,6 +66,7 @@ set(DBQA_TBS
     "tb_reader\;column_reader_tb_top"
     "tb_predicate\;predicate_engine"
     "tb_projection\;projection_engine"
+    "tb_aggregation\;aggregation_top"
 )
 
 # Testbench-specific extra SystemVerilog sources (e.g. test wrappers).

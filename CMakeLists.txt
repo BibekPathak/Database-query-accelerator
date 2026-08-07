@@ -51,6 +51,8 @@ set(RTL_SOURCES
     # Phase 5: aggregation
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/count_engine.sv
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/sum_engine.sv
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/min_engine.sv
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/max_engine.sv
 )
 
 # ---------------------------------------------------------------------------

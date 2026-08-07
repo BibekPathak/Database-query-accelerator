@@ -44,7 +44,9 @@ RTL_SRCS := \
 	rtl/operators/predicate_engine.sv \
 	rtl/operators/projection_engine.sv \
 	rtl/operators/count_engine.sv \
-	rtl/operators/sum_engine.sv
+	rtl/operators/sum_engine.sv \
+	rtl/operators/min_engine.sv \
+	rtl/operators/max_engine.sv
 
 # ---------------------------------------------------------------------------
 # Simulation testbenches. The canonical list lives in CMakeLists.txt

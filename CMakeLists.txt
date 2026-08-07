@@ -41,6 +41,8 @@ set(RTL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/common/db_pkg.sv
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/interfaces/axis_fifo.sv
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/interfaces/axis_register.sv
+    # Phase 2: columnar memory
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/memory/column_memory.sv
 )
 
 # ---------------------------------------------------------------------------

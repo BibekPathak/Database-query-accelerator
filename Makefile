@@ -38,7 +38,8 @@ SV_SOURCES := $(shell find rtl sim -name '*.sv')
 RTL_SRCS := \
 	rtl/common/db_pkg.sv \
 	rtl/interfaces/axis_fifo.sv \
-	rtl/interfaces/axis_register.sv
+	rtl/interfaces/axis_register.sv \
+	rtl/memory/column_memory.sv
 
 # ---------------------------------------------------------------------------
 # Simulation testbenches. The canonical list lives in CMakeLists.txt

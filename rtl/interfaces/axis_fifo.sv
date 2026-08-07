@@ -37,7 +37,10 @@ module axis_fifo #(
     output logic              m_axis_tvalid,
     input  logic              m_axis_tready,
     output logic [DATA_W-1:0] m_axis_tdata,
-    output logic              m_axis_tlast
+    output logic              m_axis_tlast,
+
+    // Status: current fill level (words in the FIFO)
+    output logic [COUNT_W-1:0] count
 );
 
   localparam int ADDR_W  = (DEPTH <= 1) ? 1 : $clog2(DEPTH);
@@ -53,7 +56,6 @@ module axis_fifo #(
 
   logic [ADDR_W-1:0]  wptr;
   logic [ADDR_W-1:0]  rptr;
-  logic [COUNT_W-1:0] count;
   logic [DATA_W:0]    dout_q;   // output register (FWFT)
 
   // -----------------------------------------------------------------------

@@ -59,6 +59,14 @@ module axis_fifo_multi #(
     output logic              m3_axis_tlast
 );
 
+  // Fill-level status outputs, sized per instance (COUNT_W = $clog2(DEPTH+1)).
+  /* verilator lint_off UNUSEDSIGNAL */
+  logic [0:0] cnt0;  // DEPTH 1
+  logic [1:0] cnt1;  // DEPTH 3
+  logic [4:0] cnt2;  // DEPTH 16
+  logic [8:0] cnt3;  // DEPTH 257
+  /* verilator lint_on UNUSEDSIGNAL */
+
   initial begin
     if (DATA_W < 1) $error("axis_fifo_multi: DATA_W must be >= 1");
   end
@@ -76,7 +84,8 @@ module axis_fifo_multi #(
       .m_axis_tvalid(m0_axis_tvalid),
       .m_axis_tready(m0_axis_tready),
       .m_axis_tdata(m0_axis_tdata),
-      .m_axis_tlast(m0_axis_tlast)
+      .m_axis_tlast(m0_axis_tlast),
+      .count(cnt0)
   );
 
   axis_fifo #(
@@ -92,7 +101,8 @@ module axis_fifo_multi #(
       .m_axis_tvalid(m1_axis_tvalid),
       .m_axis_tready(m1_axis_tready),
       .m_axis_tdata(m1_axis_tdata),
-      .m_axis_tlast(m1_axis_tlast)
+      .m_axis_tlast(m1_axis_tlast),
+      .count(cnt1)
   );
 
   axis_fifo #(
@@ -108,7 +118,8 @@ module axis_fifo_multi #(
       .m_axis_tvalid(m2_axis_tvalid),
       .m_axis_tready(m2_axis_tready),
       .m_axis_tdata(m2_axis_tdata),
-      .m_axis_tlast(m2_axis_tlast)
+      .m_axis_tlast(m2_axis_tlast),
+      .count(cnt2)
   );
 
   axis_fifo #(
@@ -124,7 +135,8 @@ module axis_fifo_multi #(
       .m_axis_tvalid(m3_axis_tvalid),
       .m_axis_tready(m3_axis_tready),
       .m_axis_tdata(m3_axis_tdata),
-      .m_axis_tlast(m3_axis_tlast)
+      .m_axis_tlast(m3_axis_tlast),
+      .count(cnt3)
   );
 
 endmodule

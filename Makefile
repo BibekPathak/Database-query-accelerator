@@ -39,7 +39,8 @@ RTL_SRCS := \
 	rtl/common/db_pkg.sv \
 	rtl/interfaces/axis_fifo.sv \
 	rtl/interfaces/axis_register.sv \
-	rtl/memory/column_memory.sv
+	rtl/memory/column_memory.sv \
+	rtl/memory/column_reader.sv
 
 # ---------------------------------------------------------------------------
 # Simulation testbenches. The canonical list lives in CMakeLists.txt

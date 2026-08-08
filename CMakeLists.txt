@@ -55,6 +55,8 @@ set(RTL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/max_engine.sv
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/avg_engine.sv
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/aggregation_top.sv
+    # Phase 6: group by
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/groupby_engine.sv
 )
 
 # ---------------------------------------------------------------------------
@@ -67,6 +69,7 @@ set(DBQA_TBS
     "tb_predicate\;predicate_engine"
     "tb_projection\;projection_engine"
     "tb_aggregation\;aggregation_top"
+    "tb_groupby\;groupby_engine"
 )
 
 # Testbench-specific extra SystemVerilog sources (e.g. test wrappers).

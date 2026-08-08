@@ -59,6 +59,7 @@ set(RTL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/operators/groupby_engine.sv
     # Phase 7: scheduler + top
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/scheduler/scheduler.sv
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtl/top/axi_lite_slave.sv
 )
 
 # ---------------------------------------------------------------------------
@@ -73,6 +74,7 @@ set(DBQA_TBS
     "tb_aggregation\;aggregation_top"
     "tb_groupby\;groupby_engine"
     "tb_scheduler\;scheduler"
+    "tb_axilite\;axi_lite_slave"
 )
 
 # Testbench-specific extra SystemVerilog sources (e.g. test wrappers).

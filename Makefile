@@ -49,13 +49,14 @@ RTL_SRCS := \
 	rtl/operators/max_engine.sv \
 	rtl/operators/avg_engine.sv \
 	rtl/operators/aggregation_top.sv \
-	rtl/operators/groupby_engine.sv
+	rtl/operators/groupby_engine.sv \
+	rtl/scheduler/scheduler.sv
 
 # ---------------------------------------------------------------------------
 # Simulation testbenches. The canonical list lives in CMakeLists.txt
 # (DBQA_TBS); TBS here drives the top-level "sim" aggregate only.
 # ---------------------------------------------------------------------------
-TBS := tb_smoke tb_fifo tb_reader tb_predicate tb_projection tb_aggregation tb_groupby
+TBS := tb_smoke tb_fifo tb_reader tb_predicate tb_projection tb_aggregation tb_groupby tb_scheduler
 
 # ---------------------------------------------------------------------------
 .PHONY: help all configure build sim test lint format format-check formal synth clean tb_%

@@ -118,6 +118,85 @@ std::vector<Beat> make_beats(size_t n, uint32_t seed, bool all_pass = false) {
   return beats;
 }
 
+// ---------------------------------------------------------------------------
+// GROUP BY mode (agg_cfg.groupby = 1): the stream routes to the group-by
+// engine; groups come out g_axis and the classic result ports are zeroed.
+// ---------------------------------------------------------------------------
+uint32_t gbit(const Vaggregation_top& dut, int b) {
+  const int word = b / 32;
+  const int off = b % 32;
+  return (dut.g_axis_tdata[word] >> off) & 1u;
+}
+
+uint64_t gbits(const Vaggregation_top& dut, int hi, int lo) {
+  uint64_t r = 0;
+  for (int b = hi; b >= lo; --b) r = (r << 1) | gbit(dut, b);
+  return r;
+}
+
+struct GroupOut {
+  uint64_t count;
+  uint64_t sum;
+};
+
+// Runs one GROUP BY query; expected groups are keyed by key in bucket order.
+void run_groupby_query(Vaggregation_top& dut, auto& tick,
+                       const std::vector<Beat>& beats, int key_col,
+                       int value_col,
+                       const std::vector<std::pair<uint32_t, GroupOut>>& expect,
+                       uint32_t seed) {
+  dut.agg_cfg = (static_cast<uint64_t>(1) << 20) |   // groupby = 1
+                (static_cast<uint64_t>(value_col) << 10) |
+                static_cast<uint64_t>(key_col);
+
+  dut.start = 1;
+  tick();
+  dut.start = 0;
+  dbqa::check(dut.busy, "groupby: busy asserted after start");
+
+  size_t pushed = 0;
+  for (int cyc = 0;
+       cyc < 16 * static_cast<int>(beats.size()) + 512 && pushed < beats.size();
+       ++cyc) {
+    dut.s_axis_tvalid = 1;
+    for (int c = 0; c < 4; ++c) dut.s_axis_tdata[c] = 0;
+    dut.s_axis_tdata[key_col] = beats[pushed].cols[key_col];
+    dut.s_axis_tdata[value_col] = beats[pushed].cols[value_col];
+    dut.s_axis_tdata[4] = beats[pushed].pass ? 1u : 0u;
+    dut.s_axis_tlast = (pushed == beats.size() - 1);
+    dut.eval();
+    if (dut.s_axis_tready) ++pushed;
+    tick();
+  }
+  dbqa::check(pushed == beats.size(), "groupby: all rows accepted");
+  dut.s_axis_tvalid = 0;
+
+  std::vector<GroupOut> got;
+  std::vector<uint32_t> got_keys;
+  for (int cyc = 0; cyc < 4096 && !dut.done; ++cyc) {
+    dut.eval();
+    if (dut.g_axis_tvalid) {
+      got.push_back(GroupOut{gbits(dut, 147, 106), gbits(dut, 105, 64)});
+      got_keys.push_back(static_cast<uint32_t>(gbits(dut, 179, 148)));
+    }
+    tick();
+  }
+
+  dbqa::check(dut.done, "groupby: done asserted");
+  dbqa::check(!dut.busy, "groupby: busy deasserted after done");
+  dbqa::check(dut.count == 0, "groupby: count port zeroed");
+  dbqa::check(dut.result == 0, "groupby: result port zeroed");
+  dbqa::check(!dut.overflow, "groupby: overflow port zeroed");
+
+  dbqa::expect_eq("groupby: number of groups", expect.size(), got.size());
+  for (size_t i = 0; i < expect.size() && i < got.size(); ++i) {
+    dbqa::expect_eq("groupby: group key", expect[i].first, got_keys[i]);
+    dbqa::expect_eq("groupby: group count", expect[i].second.count,
+                    got[i].count);
+    dbqa::expect_eq("groupby: group sum", expect[i].second.sum, got[i].sum);
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -128,6 +207,7 @@ int main() {
   dut.start = 0;
   dut.s_axis_tvalid = 0;
   dut.s_axis_tlast = 0;
+  dut.g_axis_tready = 1;
   for (int i = 0; i < 5; ++i) dut.s_axis_tdata[i] = 0;
   dut.eval();
 
@@ -187,6 +267,36 @@ int main() {
     }
     run_query(dut, tick, beats, OP_SUM, 0, 0x500);
     run_query(dut, tick, beats, OP_AVG, 0, 0x501);
+  }
+
+  // -------------------------------------------------------------------------
+  // GROUP BY mode: stream routes to the group-by engine; result ports zeroed.
+  // -------------------------------------------------------------------------
+  {
+    // Folding + collision: keys 0 and 0x100 both hash to bucket 0 (linear
+    // probe to bucket 1); key 7 folds in its own bucket.
+    std::vector<Beat> beats(5);
+    const uint32_t key0[5] = {0, 0, 7, 0x100, 0};
+    const uint32_t val0[5] = {5, 15, 10, 20, 25};
+    for (int i = 0; i < 5; ++i) {
+      for (int c = 0; c < 4; ++c) beats[i].cols[c] = 0;
+      beats[i].cols[0] = key0[i];
+      beats[i].cols[1] = val0[i];
+      beats[i].pass = true;
+    }
+    // Bucket order: key 0 -> bucket 0, key 0x100 (hash 0) -> bucket 1 via
+    // linear probe, key 7 -> bucket 7.
+    run_groupby_query(
+        dut, tick, beats, 0, 1,
+        {{0, GroupOut{3, 45}}, {0x100, GroupOut{1, 20}}, {7, GroupOut{1, 10}}},
+        0x600);
+  }
+
+  {
+    // No rows pass: no groups, still completes.
+    auto beats = make_beats(8, 0x601u);
+    for (auto& b : beats) b.pass = false;
+    run_groupby_query(dut, tick, beats, 0, 1, {}, 0x601);
   }
 
   // -------------------------------------------------------------------------

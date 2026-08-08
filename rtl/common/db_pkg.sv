@@ -27,6 +27,7 @@ package db_pkg;
   localparam int COLUMN_WIDTH = 32;  // bits per column datum
   localparam int NUM_ROWS = 1024;  // rows per table
   localparam int NUM_COLS = 4;  // columns per table
+  localparam int NUM_PRED = 2;  // predicate slots per query
   localparam int GROUP_BY_BUCKETS = 256;  // GROUP BY hash bucket count
 
   // -----------------------------------------------------------------------
@@ -117,13 +118,69 @@ package db_pkg;
     logic [COLUMN_WIDTH-1:0]  imm;      // immediate operand
   } pred_cfg_t;
 
-  // Aggregation configuration.
+  // Aggregation configuration. `groupby` is the mode switch: 0 selects the
+  // classic engine (COUNT / SUM / MIN / MAX / AVG), 1 routes the stream to
+  // the GROUP BY engine (aggregating `gby_key`'s groups by `column`).
   typedef struct packed {
     opcode_e                  op;       // COUNT / SUM / MIN / MAX / AVG
     logic                     groupby;  // 1 = group by key column
     logic [COLUMN_ADDR_W-1:0] column;   // column to aggregate
     logic [COLUMN_ADDR_W-1:0] gby_key;  // GROUP BY key column
   } agg_cfg_t;
+
+  // -----------------------------------------------------------------------
+  // Query and status records
+  // -----------------------------------------------------------------------
+
+  // Query configuration: how many rows of the (loaded) table to scan. The
+  // scan always starts at row 0; num_rows == 0 means the full table.
+  typedef struct packed {logic [COLUMN_ADDR_W-1:0] num_rows;} query_cfg_t;
+
+  // Execution status exposed to the control plane over AXI-Lite.
+  typedef struct packed {
+    logic busy;   // a query is running
+    logic done;   // the last query completed
+    logic error;  // the last query aborted (see error_e)
+  } status_t;
+
+  // Abort reasons latched by the scheduler.
+  typedef enum logic [1:0] {
+    ERR_NONE         = 2'd0,
+    ERR_START_BUSY   = 2'd1,  // start while the accelerator was busy
+    ERR_AGG_OVERFLOW = 2'd2   // SUM saturated (overflow flag set)
+  } error_e;
+
+  // -----------------------------------------------------------------------
+  // AXI-Lite register map. Offsets are 32-bit word offsets; the byte address
+  // is offset << 2. Read/write semantics live in the top-level slave
+  // (Phase 7); these constants are the single source of truth for the RTL
+  // register file and the software control plane.
+  // -----------------------------------------------------------------------
+  localparam int REG_CTRL       = 0;                          // W: [0]=start [1]=abort
+  localparam int REG_STATUS     = 1;                          // R: status_t bits
+  localparam int REG_QUERY      = 2;                          // W: query_cfg_t
+  localparam int REG_AGG_CFG    = 3;                          // W: agg_cfg_t
+  localparam int REG_PROJ_MASK  = 4;                          // W: proj_mask_t
+  localparam int REG_PRED_BASE  = 8;                          // pred slots: 2 words each, slot i at
+                                                              // REG_PRED_BASE + 2*i (low), +1 (high)
+  localparam int REG_PRED_WORDS = 2;                          // words per pred slot (39-bit cfg)
+  localparam int REG_LOAD_ADDR  = 32'h20;                     // W: row address to load
+  localparam int REG_LOAD_DATA0 = 32'h21;                     // W: column data; +c for column c
+  localparam int REG_LOAD_ROW   = REG_LOAD_DATA0 + NUM_COLS;  // W: commit strobe
+  localparam int REG_RESULT     = 32'h30;                     // R: aggregation result low word
+  localparam int REG_RESULT_HI  = 32'h31;                     // R: aggregation result high bits
+  localparam int REG_COUNT      = 32'h32;                     // R: aggregate row count low word
+  localparam int REG_COUNT_HI   = 32'h33;                     // R: aggregate row count high bits
+  localparam int REG_OVERFLOW   = 32'h34;                     // R: [0]=SUM overflow
+
+  // Control register bits.
+  localparam int CTRL_START     = 0;
+  localparam int CTRL_ABORT     = 1;
+
+  // Status register bits.
+  localparam int STATUS_BUSY    = 0;
+  localparam int STATUS_DONE    = 1;
+  localparam int STATUS_ERROR   = 2;
 
   // -----------------------------------------------------------------------
   // Combinational helpers (single source of comparator semantics, shared by

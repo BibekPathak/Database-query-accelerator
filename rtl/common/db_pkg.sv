@@ -163,7 +163,7 @@ package db_pkg;
   localparam int REG_PROJ_MASK  = 4;                          // W: proj_mask_t
   localparam int REG_PRED_BASE  = 8;                          // pred slots: 2 words each, slot i at
                                                               // REG_PRED_BASE + 2*i (low), +1 (high)
-  localparam int REG_PRED_WORDS = 2;                          // words per pred slot (39-bit cfg)
+  localparam int REG_PRED_WORDS = 2;                          // words per pred slot (47-bit cfg)
   localparam int REG_LOAD_ADDR  = 32'h20;                     // W: row address to load
   localparam int REG_LOAD_DATA0 = 32'h21;                     // W: column data; +c for column c
   localparam int REG_LOAD_ROW   = REG_LOAD_DATA0 + NUM_COLS;  // W: commit strobe

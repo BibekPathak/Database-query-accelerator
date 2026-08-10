@@ -1,0 +1,20 @@
+# ===========================================================================
+#  count_engine.sby -- bounded model check of the streaming COUNT engine.
+#
+#  Run:  sby -f formal/count_engine.sby
+# ===========================================================================
+[options]
+mode bmc
+depth 24
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal -sv db_pkg_formal.sv count_engine_f.sv count_engine_formal.sv
+prep -top count_engine_formal
+
+[files]
+formal/db_pkg_formal.sv
+formal/count_engine_f.sv
+formal/count_engine_formal.sv

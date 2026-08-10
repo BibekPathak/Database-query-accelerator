@@ -1,0 +1,22 @@
+# ===========================================================================
+#  axis_fifo.sby -- bounded model check of the AXI-Stream FIFO.
+#
+#  Proves the occupancy-conservation and ready/valid invariants of axis_fifo
+#  over bounded traces from the reset state.
+#
+#  Run:  sby -f formal/axis_fifo.sby
+# ===========================================================================
+[options]
+mode bmc
+depth 24
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal -sv axis_fifo.sv axis_fifo_formal.sv
+prep -top axis_fifo_formal
+
+[files]
+rtl/interfaces/axis_fifo.sv
+formal/axis_fifo_formal.sv

@@ -6,7 +6,8 @@
 #    2. lint      Verilator --lint-only over all RTL
 #    3. build     Verilator + C++20 testbench compilation
 #    4. test      CTest: every self-checking testbench
-#    5. formal    SymbiYosys formal proofs          (enabled Phase 10)
+#    5. formal    SymbiYosys bounded model checks (FIFO, skid register,
+#                 COUNT/SUM engines)
 #    6. synth     Vivado synthesis for XC7A35T      (enabled Phase 11)
 #
 #  Artifacts: benchmark CSVs, logs and formal/synth reports are uploaded
@@ -98,8 +99,23 @@ jobs:
   formal:
     name: Formal verification
     runs-on: ubuntu-latest
-    if: false  # enabled in Phase 10 (SymbiYosys)
-    steps: []
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SymbiYosys
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yosys
+          pip install git+https://github.com/YosysHQ/sby
+          pip install z3-solver
+      - name: Run formal proofs
+        run: make formal
+      - name: Upload formal logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-logs
+          path: build/formal/
+          if-no-files-found: ignore
 
   synth:
     name: Vivado synthesis

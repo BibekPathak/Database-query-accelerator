@@ -33,8 +33,9 @@ query is configured over AXI-Lite.
   See [`scripts/dbqa/`](scripts/dbqa/) and the example below.
 - **Verification** — C++20 self-checking testbenches with scoreboards against
   a software reference model, constrained-random and stress tests.
-- **Formal verification** — SymbiYosys properties on the FIFO, ready/valid
-  protocol, counters, aggregators and register interface.
+- **Formal verification** — SymbiYosys bounded model checks of the FIFO
+  occupancy/ready-valid invariants, the skid-register beat conservation, and
+  the COUNT/SUM accumulator consistency, run in CI (`make formal`).
 - **Synthesis** — Vivado flow producing utilization, timing, Fmax and power
   reports.
 
@@ -174,6 +175,25 @@ groups = (Query(backend, schema)
 print([(g.key, g.sum) for g in groups])
 ```
 
+## Formal verification
+
+`make formal` runs SymbiYosys bounded model checks (`.sby` scripts in
+`formal/`) over the core protocol modules:
+
+- **axis_fifo** — occupancy conservation, `count ∈ [0, DEPTH]`, no push-into-
+  full / pop-from-empty.
+- **axis_register** — at most one beat in flight; a held beat is presented
+  unchanged.
+- **count_engine / sum_engine** — the latched result (and overflow) match an
+  independent shadow model at completion.
+
+The properties are plain current-cycle booleans checked against shadow
+models, so they verify with both the native yosys frontend (CI) and the
+WASM builds (`SBY=yowasp-sby make formal`). The formal flow reads a
+formal-only `db_pkg` replica and import-free copies of the two engines
+(see the headers in `formal/`) because the yosys frontend rejects `$bits()`
+and package imports.
+
 ## Engineering standards
 
 SystemVerilog:
@@ -205,7 +225,7 @@ pipeline. The remaining phases add scale and tooling.
 | Scheduler + top         | ✅ Phase 7 (AXI-Lite, full queries)     |
 | Random / perf TBs       | 🔜 Phase 8                              |
 | Python control plane    | ✅ Phase 9 (fluent API + Verilator co-sim) |
-| Formal verification     | 🔜 Phase 10                             |
+| Formal verification     | ✅ Phase 10 (SymbiYosys, CI)              |
 | Synthesis (XC7A35T)     | 🔜 Phase 11                             |
 | Documentation           | 🔜 Phase 12                             |
 

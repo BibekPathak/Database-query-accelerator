@@ -1,0 +1,19 @@
+# ===========================================================================
+#  axis_register.sby -- bounded model check of the AXI-Stream skid register.
+#
+#  Run:  sby -f formal/axis_register.sby
+# ===========================================================================
+[options]
+mode bmc
+depth 24
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal -sv axis_register.sv axis_register_formal.sv
+prep -top axis_register_formal
+
+[files]
+rtl/interfaces/axis_register.sv
+formal/axis_register_formal.sv

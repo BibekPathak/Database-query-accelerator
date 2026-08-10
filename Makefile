@@ -154,10 +154,23 @@ format-check:
 	@echo "format-check: all SystemVerilog files are Verible-formatted"
 
 # ---------------------------------------------------------------------------
-# Formal verification and synthesis are wired up in later phases.
+# Formal verification (SymbiYosys, Phase 10).
+# Run:  make formal            (sby on PATH; locally: SBY=yowasp-sby make formal)
 # ---------------------------------------------------------------------------
+SBY        ?= sby
+FORMAL_SBYS := $(wildcard formal/*.sby)
+
 formal:
-	@echo "Formal verification (SymbiYosys) is enabled in Phase 10; skipping."
+	@if [ -z "$(FORMAL_SBYS)" ]; then \
+		echo "no formal scripts found (formal/*.sby)"; \
+		exit 0; \
+	fi
+	@for f in $(FORMAL_SBYS); do \
+		job="$$(basename "$$f" .sby)"; \
+		echo "== sby -f $$f =="; \
+		$(SBY) -f "$$f" -d "$(BUILD_DIR)/formal/$$job" || exit 1; \
+	done
+	@echo "formal: all proofs passed"
 
 synth:
 	@echo "Vivado synthesis flow is enabled in Phase 11; skipping."

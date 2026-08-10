@@ -25,9 +25,12 @@
 #include <vector>
 
 #include "Vdbqa_top.h"
+#include "dbqa_reference.hpp"
 #include "dbqa_test.hpp"
 
 namespace {
+
+using namespace dbqa_ref;
 
 // db_pkg register map (word offsets).
 constexpr uint32_t REG_CTRL = 0, REG_STATUS = 1, REG_QUERY = 2,
@@ -37,81 +40,6 @@ constexpr uint32_t REG_CTRL = 0, REG_STATUS = 1, REG_QUERY = 2,
                    REG_COUNT = 0x32, REG_COUNT_HI = 0x33, REG_OVERFLOW = 0x34;
 
 constexpr int OP_COUNT = 1, OP_SUM = 2, OP_MIN = 3, OP_MAX = 4, OP_AVG = 5;
-constexpr uint64_t SUM_MAX = 0x3FFFFFFFFFFull;
-constexpr uint64_t NUM_ROWS = 1024;
-
-struct Row {
-  uint32_t cols[4];
-};
-
-struct AggRef {
-  uint64_t count;
-  uint64_t sum;
-  uint32_t mn;
-  uint32_t mx;
-};
-
-template <typename T>
-void expect_eq64(const char* what, uint64_t e, T g) {
-  dbqa::expect_eq<uint64_t>(what, e, static_cast<uint64_t>(g));
-}
-
-bool pred_pass(int op, uint32_t a, uint32_t b) {
-  switch (op) {
-    case 0: return a == b;
-    case 1: return a != b;
-    case 2: return a < b;
-    case 3: return a > b;
-    case 4: return a <= b;
-    case 5: return a >= b;
-    default: return false;
-  }
-}
-
-const Row& row_at(const std::vector<Row>& rows, uint64_t i) {
-  static const Row zero = Row{{0, 0, 0, 0}};
-  return (i < rows.size()) ? rows[i] : zero;
-}
-
-AggRef reference(const std::vector<Row>& rows, uint64_t num_rows, int agg_col,
-                 bool pred_en, int pred_op, uint32_t imm, int pred_col) {
-  const uint64_t n =
-      (num_rows == 0) ? NUM_ROWS : std::min<uint64_t>(num_rows, NUM_ROWS);
-  AggRef r{0, 0, 0xFFFFFFFFu, 0u};
-  for (uint64_t i = 0; i < n; ++i) {
-    const Row& x = row_at(rows, i);
-    if (pred_en && !pred_pass(pred_op, x.cols[pred_col], imm)) continue;
-    ++r.count;
-    const uint32_t v = x.cols[agg_col];
-    if (r.sum + v > SUM_MAX) {
-      r.sum = SUM_MAX;
-    } else {
-      r.sum += v;
-    }
-    if (v < r.mn) r.mn = v;
-    if (v > r.mx) r.mx = v;
-  }
-  return r;
-}
-
-std::map<uint32_t, AggRef> groupby_ref(const std::vector<Row>& rows,
-                                       uint64_t num_rows, int key_col,
-                                       int value_col) {
-  const uint64_t n =
-      (num_rows == 0) ? NUM_ROWS : std::min<uint64_t>(num_rows, NUM_ROWS);
-  std::map<uint32_t, AggRef> ref;
-  for (uint64_t i = 0; i < n; ++i) {
-    const Row& x = row_at(rows, i);
-    auto& g = ref[x.cols[key_col]];
-    if (g.count == 0) {
-      g = AggRef{1, x.cols[value_col], 0, 0};
-    } else {
-      g.count += 1;
-      g.sum += x.cols[value_col];
-    }
-  }
-  return ref;
-}
 
 void axil_write(Vdbqa_top& dut, auto& tick, uint32_t word, uint32_t data) {
   dut.s_axil_bready = 1;
@@ -265,6 +193,158 @@ void run_groupby(Vdbqa_top& dut, auto& tick, const std::vector<Row>& rows,
     }
   }
   dbqa::check(saw_done, "groupby: done asserted");
+
+  char msg[64];
+  std::snprintf(msg, sizeof msg, "%s: group count", tag);
+  dbqa::expect_eq(msg, ref.size(), got.size());
+  for (const auto& [k, g] : ref) {
+    if (!got.count(k)) continue;
+    std::snprintf(msg, sizeof msg, "%s: key 0x%x count", tag, k);
+    dbqa::expect_eq(msg, g.count, got[k].count);
+    std::snprintf(msg, sizeof msg, "%s: key 0x%x sum", tag, k);
+    dbqa::expect_eq(msg, g.sum, got[k].sum);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Backpressure torture: every AXI-Lite and AXI-Stream handshake is randomly
+// gated (ready deasserted ~50% of the time); the same results must still come
+// out because handshakes hold until ready.
+// ---------------------------------------------------------------------------
+uint32_t gated_read(Vdbqa_top& dut, auto& tick, std::mt19937& rng,
+                    uint32_t word) {
+  dut.s_axil_rready = rng() & 1;
+  dut.s_axil_arvalid = 1;
+  dut.s_axil_araddr = word << 2;
+  dut.eval();
+  tick();
+  dut.s_axil_arvalid = 0;
+  int cyc = 0;
+  while (!dut.s_axil_rvalid && cyc++ < 1024) {
+    dut.s_axil_rready = rng() & 1;
+    dut.eval();
+    tick();
+  }
+  dut.eval();
+  const uint32_t d = dut.s_axil_rvalid ? dut.s_axil_rdata : 0xDEADBEEFu;
+  while (dut.s_axil_rvalid) {
+    dut.s_axil_rready = rng() & 1;
+    dut.eval();
+    tick();
+  }
+  dut.eval();
+  return d;
+}
+
+void gated_write(Vdbqa_top& dut, auto& tick, std::mt19937& rng, uint32_t word,
+                 uint32_t data) {
+  dut.s_axil_bready = rng() & 1;
+  dut.s_axil_awvalid = 1;
+  dut.s_axil_awaddr = word << 2;
+  dut.s_axil_wvalid = 1;
+  dut.s_axil_wdata = data;
+  dut.eval();
+  tick();
+  dut.s_axil_awvalid = 0;
+  dut.s_axil_wvalid = 0;
+  int cyc = 0;
+  while (!dut.s_axil_bvalid && cyc++ < 1024) {
+    dut.s_axil_bready = rng() & 1;
+    dut.eval();
+    tick();
+  }
+  dut.eval();
+  while (dut.s_axil_bvalid) {
+    dut.s_axil_bready = rng() & 1;
+    dut.eval();
+    tick();
+  }
+  dut.eval();
+}
+
+void set_pred_torture(Vdbqa_top& dut, auto& tick, std::mt19937& rng, bool en,
+                      int op, uint32_t imm, int col) {
+  gated_write(dut, tick, rng, REG_PRED_BASE, imm);
+  gated_write(dut, tick, rng, REG_PRED_BASE + 1,
+              (en ? 1u : 0u) << 14 | static_cast<uint32_t>(op & 7) << 11 |
+                  static_cast<uint32_t>(col & 0x3FF));
+  gated_write(dut, tick, rng, REG_PRED_BASE + 2, 0);
+  gated_write(dut, tick, rng, REG_PRED_BASE + 3, 0);
+}
+
+void run_classic_torture(Vdbqa_top& dut, auto& tick, std::mt19937& rng,
+                         const std::vector<Row>& rows, int op, int agg_col,
+                         uint64_t num_rows, bool pred_en, int pred_op,
+                         uint32_t imm, int pred_col, const char* tag) {
+  const AggRef ref =
+      reference(rows, num_rows, agg_col, pred_en, pred_op, imm, pred_col);
+  set_pred_torture(dut, tick, rng, pred_en, pred_op, imm, pred_col);
+  gated_write(dut, tick, rng, REG_QUERY, static_cast<uint32_t>(num_rows));
+  gated_write(dut, tick, rng, REG_AGG_CFG, pack_agg(op, false, agg_col, 0));
+  gated_write(dut, tick, rng, REG_PROJ_MASK, 0xF);
+  gated_write(dut, tick, rng, REG_CTRL, 1);  // start
+
+  bool done = false;
+  for (int i = 0; i < 8192 && !done; ++i)
+    if (gated_read(dut, tick, rng, REG_STATUS) & 2) done = true;
+  dbqa::check(done, "torture: query completes");
+
+  uint64_t result =
+      (static_cast<uint64_t>(gated_read(dut, tick, rng, REG_RESULT_HI)) << 32) |
+      gated_read(dut, tick, rng, REG_RESULT);
+  uint64_t count =
+      (static_cast<uint64_t>(gated_read(dut, tick, rng, REG_COUNT_HI)) << 32) |
+      gated_read(dut, tick, rng, REG_COUNT);
+  const uint32_t overflow = gated_read(dut, tick, rng, REG_OVERFLOW);
+
+  uint64_t expect = 0;
+  switch (op) {
+    case OP_COUNT: expect = ref.count; break;
+    case OP_SUM: expect = ref.sum; break;
+    case OP_MIN: expect = ref.mn; break;
+    case OP_MAX: expect = ref.mx; break;
+    case OP_AVG: expect = ref.sum; break;
+  }
+  char msg[64];
+  std::snprintf(msg, sizeof msg, "%s: result", tag);
+  dbqa::expect_eq(msg, expect, result);
+  std::snprintf(msg, sizeof msg, "%s: count", tag);
+  dbqa::expect_eq(msg, ref.count, count);
+  std::snprintf(msg, sizeof msg, "%s: overflow", tag);
+  dbqa::check(overflow == (ref.sum == SUM_MAX), msg);
+}
+
+void run_groupby_torture(Vdbqa_top& dut, auto& tick, std::mt19937& rng,
+                         const std::vector<Row>& rows, int key_col,
+                         int value_col, uint64_t num_rows,
+                         const std::map<uint32_t, AggRef>& ref,
+                         const char* tag) {
+  set_pred_torture(dut, tick, rng, false, 0, 0, 0);
+  gated_write(dut, tick, rng, REG_QUERY, static_cast<uint32_t>(num_rows));
+  gated_write(dut, tick, rng, REG_AGG_CFG,
+              pack_agg(OP_SUM, true, value_col, key_col));
+  gated_write(dut, tick, rng, REG_PROJ_MASK, 0xF);
+  gated_write(dut, tick, rng, REG_CTRL, 1);  // start
+
+  std::map<uint32_t, AggRef> got;
+  bool saw_done = false;
+  for (int cyc = 0; cyc < 8 * static_cast<int>(rows.size()) + 65536 &&
+                       !saw_done;
+       ++cyc) {
+    dut.m_axis_tready = rng() & 1;  // gate the group stream
+    dut.eval();
+    if (dut.m_axis_tvalid && dut.m_axis_tready) {
+      uint32_t key = static_cast<uint32_t>(gbits(dut, 179, 148));
+      const uint64_t cnt = gbits(dut, 147, 106);
+      const uint64_t sum = gbits(dut, 105, 64);
+      got[key] = AggRef{cnt, sum, 0, 0};
+    }
+    tick();
+    if ((cyc & 0x3FF) == 0x3FF) {
+      if (gated_read(dut, tick, rng, REG_STATUS) & 2) saw_done = true;
+    }
+  }
+  dbqa::check(saw_done, "torture: groupby done asserted");
 
   char msg[64];
   std::snprintf(msg, sizeof msg, "%s: group count", tag);
@@ -444,6 +524,38 @@ int main() {
                 tag);
   }
   std::printf("  constrained-random groupby complete\n");
+
+  // -------------------------------------------------------------------------
+  // Backpressure torture: randomly gate every AXI-Lite / AXI-Stream
+  // handshake and re-verify the same queries against the reference.
+  // -------------------------------------------------------------------------
+  {
+    std::mt19937 trng(0x7155u);
+    load_table(dut, tick, rows);
+    run_classic_torture(dut, tick, trng, rows, OP_COUNT, 1, 8, false, 0, 0, 0,
+                        "torture count");
+    run_classic_torture(dut, tick, trng, rows, OP_SUM, 1, 8, true, 5, 5, 0,
+                        "torture sum pred");
+    run_classic_torture(dut, tick, trng, rows, OP_SUM, 1, 3, false, 0, 0, 0,
+                        "torture trunc");
+    run_classic_torture(dut, tick, trng, rows, OP_MIN, 2, 8, false, 0, 0, 0,
+                        "torture min");
+    {
+      std::vector<Row> gb(6);
+      const uint32_t id[6] = {0, 1, 0, 1, 0, 1};
+      const uint32_t v[6] = {5, 10, 15, 20, 25, 30};
+      for (int i = 0; i < 6; ++i) {
+        gb[i].cols[0] = id[i];
+        gb[i].cols[1] = v[i];
+        gb[i].cols[2] = gb[i].cols[3] = 0;
+      }
+      load_table(dut, tick, gb);
+      run_groupby_torture(dut, tick, trng, gb, 0, 1, 6,
+                          groupby_ref(gb, 6, 0, 1), "torture gb");
+    }
+    dut.m_axis_tready = 1;
+  }
+  std::printf("  backpressure torture complete\n");
 
   return dbqa::summary("tb_top");
 }

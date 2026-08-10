@@ -209,10 +209,11 @@ pipeline. The remaining phases add scale and tooling.
 | Synthesis (XC7A35T)     | 🔜 Phase 11                             |
 | Documentation           | 🔜 Phase 12                             |
 
-Verilator testbenches run in CI: `make sim` builds and runs all ten TBs
-(`tb_smoke`…`tb_top`) with a CTest exit code per test. The Python control
-plane is exercised by `make python-test` (pytest, including end-to-end
-queries against the Verilator model).
+Verilator testbenches run in CI: `make sim` builds and runs all twelve TBs
+(`tb_smoke`…`tb_stress`, plus the `tb_perf` harness writing `results/perf.csv`)
+with a CTest exit code per test. The Python control plane is exercised by
+`make python-test` (pytest, including end-to-end queries against the Verilator
+model).
 
 ## License
 

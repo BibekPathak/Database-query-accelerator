@@ -77,6 +77,8 @@ set(DBQA_TBS
     "tb_scheduler\;scheduler"
     "tb_axilite\;axi_lite_slave"
     "tb_top\;dbqa_top"
+    "tb_stress\;dbqa_top"
+    "tb_perf\;dbqa_top"
 )
 
 # Testbench-specific extra SystemVerilog sources (e.g. test wrappers).

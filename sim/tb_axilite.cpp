@@ -74,6 +74,59 @@ uint32_t axil_read(Vaxi_lite_slave& dut, auto& tick, uint32_t word) {
   return d;
 }
 
+// Backpressure-torture variants: randomly gate bready / rready. The same
+// register must still be written / read because handshakes hold until ready.
+void gated_write(Vaxi_lite_slave& dut, auto& tick, std::mt19937& rng,
+                 uint32_t word, uint32_t data) {
+  dut.s_axil_bready = rng() & 1;
+  dut.s_axil_awvalid = 1;
+  dut.s_axil_awaddr = word << 2;
+  dut.s_axil_wvalid = 1;
+  dut.s_axil_wdata = data;
+  dut.eval();
+  tick();
+  dut.s_axil_awvalid = 0;
+  dut.s_axil_wvalid = 0;
+  int cyc = 0;
+  while (!dut.s_axil_bvalid && cyc++ < 1024) {
+    dut.s_axil_bready = rng() & 1;
+    dut.eval();
+    tick();
+  }
+  dut.eval();
+  while (dut.s_axil_bvalid) {
+    dut.s_axil_bready = rng() & 1;
+    dut.eval();
+    tick();
+  }
+  dut.eval();
+}
+
+uint32_t gated_read(Vaxi_lite_slave& dut, auto& tick, std::mt19937& rng,
+                    uint32_t word) {
+  dut.s_axil_rready = rng() & 1;
+  dut.s_axil_arvalid = 1;
+  dut.s_axil_araddr = word << 2;
+  dut.eval();
+  tick();
+  dut.s_axil_arvalid = 0;
+  int cyc = 0;
+  while (!dut.s_axil_rvalid && cyc++ < 1024) {
+    dut.s_axil_rready = rng() & 1;
+    dut.eval();
+    tick();
+  }
+  dut.eval();
+  const uint32_t d = dut.s_axil_rvalid ? dut.s_axil_rdata : 0xDEADBEEFu;
+  while (dut.s_axil_rvalid) {
+    dut.s_axil_rready = rng() & 1;
+    dut.eval();
+    tick();
+  }
+  dut.eval();
+  return d;
+}
+
 }  // namespace
 
 int main() {
@@ -308,6 +361,38 @@ int main() {
     expect_eq64("rand pred hi", hi, (dut.pred_cfg[0] >> 32) & 0x3FFF);
   }
   std::printf("  constrained-random round-trips complete\n");
+
+  // -------------------------------------------------------------------------
+  // Backpressure torture: random bready/rready gating while writing and
+  // reading the same registers; values must round-trip unchanged.
+  // -------------------------------------------------------------------------
+  {
+    std::mt19937 trng(0xBA0Fu);
+    for (int run = 0; run < 60; ++run) {
+      const uint32_t num_rows = trng() & 0x3FF;
+      const uint32_t agg = trng() & 0xFFFFFF;
+      const uint32_t mask = trng() & 0xF;
+      const uint32_t imm = trng();
+      const uint32_t hi = trng() & 0x3FFF;
+      gated_write(dut, tick, trng, 2, num_rows);
+      gated_write(dut, tick, trng, 3, agg);
+      gated_write(dut, tick, trng, 4, mask);
+      gated_write(dut, tick, trng, 8, imm);
+      gated_write(dut, tick, trng, 9, hi);
+      expect_eq64("torture query", num_rows, dut.query_cfg);
+      expect_eq64("torture agg", agg, dut.agg_cfg);
+      expect_eq64("torture proj", mask, dut.proj_mask);
+      expect_eq64("torture pred imm", imm,
+                  dut.pred_cfg[0] & 0xFFFFFFFFull);
+      expect_eq64("torture pred hi", hi, (dut.pred_cfg[0] >> 32) & 0x3FFF);
+      expect_eq64("torture read query", num_rows, gated_read(dut, tick, trng, 2));
+      expect_eq64("torture read agg", agg, gated_read(dut, tick, trng, 3));
+      expect_eq64("torture read proj", mask, gated_read(dut, tick, trng, 4));
+      expect_eq64("torture read pred lo", imm,
+                  gated_read(dut, tick, trng, 8));
+    }
+  }
+  std::printf("  backpressure torture complete\n");
 
   return dbqa::summary("tb_axilite");
 }

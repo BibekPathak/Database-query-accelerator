@@ -36,8 +36,10 @@ query is configured over AXI-Lite.
 - **Formal verification** — SymbiYosys bounded model checks of the FIFO
   occupancy/ready-valid invariants, the skid-register beat conservation, and
   the COUNT/SUM accumulator consistency, run in CI (`make formal`).
-- **Synthesis** — Vivado flow producing utilization, timing, Fmax and power
-  reports.
+- **Synthesis** — Vivado non-project flow for the Artix-7 XC7A35T
+  (`make synth`, `synth/run_synth.tcl` + `synth/constraints.xdc`) producing
+  utilization, timing and power reports. See
+  [`docs/synthesis.md`](docs/synthesis.md).
 
 ## Architecture
 
@@ -226,7 +228,7 @@ pipeline. The remaining phases add scale and tooling.
 | Random / perf TBs       | 🔜 Phase 8                              |
 | Python control plane    | ✅ Phase 9 (fluent API + Verilator co-sim) |
 | Formal verification     | ✅ Phase 10 (SymbiYosys, CI)              |
-| Synthesis (XC7A35T)     | 🔜 Phase 11                             |
+| Synthesis (XC7A35T)     | 🔜 Phase 11 (flow ready; Vivado run pending) |
 | Documentation           | 🔜 Phase 12                             |
 
 Verilator testbenches run in CI: `make sim` builds and runs all twelve TBs

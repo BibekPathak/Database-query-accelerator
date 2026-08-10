@@ -172,8 +172,19 @@ formal:
 	done
 	@echo "formal: all proofs passed"
 
+# ---------------------------------------------------------------------------
+# Synthesis (Vivado, Phase 11). Requires a machine with Vivado on PATH.
+# Without Vivado this degrades gracefully: `make lint` already elaborates
+# dbqa_top, so the flow is runnable where a Xilinx toolchain exists.
+# ---------------------------------------------------------------------------
 synth:
-	@echo "Vivado synthesis flow is enabled in Phase 11; skipping."
+	@if ! command -v vivado >/dev/null 2>&1; then \
+		echo "Vivado not found on PATH; synthesis requires a machine with Vivado."; \
+		echo "The design is verified to elaborate via 'make lint'; run this target"; \
+		echo "on a Xilinx host (e.g. vivado -mode batch -source synth/run_synth.tcl)."; \
+		exit 0; \
+	fi; \
+	vivado -mode batch -source synth/run_synth.tcl -nojournal -log results/synth_vivado.log
 
 clean:
 	rm -rf $(BUILD_DIR)

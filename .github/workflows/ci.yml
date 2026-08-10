@@ -120,5 +120,9 @@ jobs:
   synth:
     name: Vivado synthesis
     runs-on: ubuntu-latest
-    if: false  # enabled in Phase 11 (Artix-7 XC7A35T)
+    # Vivado is not available on GitHub-hosted runners and requires a Xilinx
+    # license/environment. The flow is written (synth/run_synth.tcl) and ready
+    # to run on a machine with Vivado via `make synth`; the design's
+    # elaboration is already gated by `make lint`.
+    if: false
     steps: []

@@ -97,7 +97,10 @@ backpressured.
 ├── formal/               SymbiYosys property files and .sby scripts
 ├── synth/                Vivado Tcl synthesis flow for XC7A35T
 ├── docs/                 architecture, register map, verification and
-│                         performance reports
+│                         performance reports:
+│                         docs/architecture.md · docs/register_map.md ·
+│                         docs/verification.md · docs/performance.md ·
+│                         docs/synthesis.md
 ├── results/              generated benchmark CSVs and reports (gitignored)
 └── .github/workflows/    CI: format → lint → build → test → formal → synth
 ```
@@ -225,11 +228,11 @@ pipeline. The remaining phases add scale and tooling.
 | Columnar memory         | ✅ Phase 2                              |
 | Operators               | ✅ Phases 3–6                           |
 | Scheduler + top         | ✅ Phase 7 (AXI-Lite, full queries)     |
-| Random / perf TBs       | 🔜 Phase 8                              |
+| Random / perf TBs       | ✅ Phase 8 (stress + perf harness)      |
 | Python control plane    | ✅ Phase 9 (fluent API + Verilator co-sim) |
 | Formal verification     | ✅ Phase 10 (SymbiYosys, CI)              |
 | Synthesis (XC7A35T)     | 🔜 Phase 11 (flow ready; Vivado run pending) |
-| Documentation           | 🔜 Phase 12                             |
+| Documentation           | ✅ Phase 12 (docs/)                         |
 
 Verilator testbenches run in CI: `make sim` builds and runs all twelve TBs
 (`tb_smoke`…`tb_stress`, plus the `tb_perf` harness writing `results/perf.csv`)

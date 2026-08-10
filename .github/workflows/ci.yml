@@ -79,6 +79,22 @@ jobs:
             results/
           if-no-files-found: ignore
 
+  python-test:
+    name: Python control plane
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Verilator and pytest
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator python3-pytest
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build the co-simulation server
+        run: cmake --build build --target axil_server --parallel "$(nproc)"
+      - name: Run Python tests
+        run: make python-test
+
   formal:
     name: Formal verification
     runs-on: ubuntu-latest

@@ -134,6 +134,40 @@ function(dbqa_add_tb name top)
 endfunction()
 
 # ---------------------------------------------------------------------------
+# Add a Verilator-based executable that is built but NOT registered with
+# CTest (e.g. a co-simulation server driven by an external process).
+#   dbqa_add_server(<name> <top_module>)
+# ---------------------------------------------------------------------------
+function(dbqa_add_server name top)
+    if(NOT name)
+        message(FATAL_ERROR "dbqa_add_server: missing name")
+    endif()
+    if(NOT top)
+        message(FATAL_ERROR "dbqa_add_server(${name}): missing top module")
+    endif()
+
+    set(mdir "${CMAKE_BINARY_DIR}/${name}")
+    set(exe "${mdir}/V${name}")
+    set(srcs ${RTL_SOURCES} ${DBQA_TB_EXTRA_${name}}
+             "${CMAKE_CURRENT_SOURCE_DIR}/sim/${name}.cpp")
+
+    add_custom_command(
+        OUTPUT "${exe}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${mdir}"
+        COMMAND "${VERILATOR_BIN}" ${DBQA_VERILATOR_FLAGS}
+                --Mdir "${mdir}"
+                --top-module "${top}"
+                -CFLAGS "${DBQA_CXXFLAGS}"
+                ${srcs}
+                --exe -o "V${name}"
+        DEPENDS ${srcs}
+        COMMENT "Building server ${name}"
+        VERBATIM)
+
+    add_custom_target(${name} DEPENDS "${exe}")
+endfunction()
+
+# ---------------------------------------------------------------------------
 # Toolchain smoke test: pure C++20, no RTL. Proves the compiler, C++20 mode,
 # and CTest plumbing work before any RTL exists.
 # ---------------------------------------------------------------------------
@@ -149,6 +183,9 @@ if(RTL_SOURCES)
         list(GET pair 1 tb_top)
         dbqa_add_tb(${tb_name} ${tb_top})
     endforeach()
+
+    # Co-simulation server for the Python control plane (Phase 9).
+    dbqa_add_server(axil_server dbqa_top)
 else()
     message(STATUS "No RTL sources yet; Verilated testbenches will be added in Phase 1+")
 endif()

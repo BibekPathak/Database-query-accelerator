@@ -30,6 +30,7 @@ query is configured over AXI-Lite.
   See [`docs/register_map.md`](docs/register_map.md).
 - **Python query compiler** — `query.select("salary").where("age",">",30)
   .sum().execute()` compiles to register writes; `avg = sum / count`.
+  See [`scripts/dbqa/`](scripts/dbqa/) and the example below.
 - **Verification** — C++20 self-checking testbenches with scoreboards against
   a software reference model, constrained-random and stress tests.
 - **Formal verification** — SymbiYosys properties on the FIFO, ready/valid
@@ -134,6 +135,45 @@ Waveform capture is planned but not yet wired into the Verilator testbenches
 (Phases 8/12); the `dbqa_test.hpp` trace gate (`DBQA_TRACE`) is reserved for
 it.
 
+## Python control plane
+
+The `scripts/dbqa/` package drives the accelerator over AXI-Lite. The
+`VerilatorBackend` co-simulates the actual RTL through the `axil_server`
+harness (built with `make axil-server`); a hardware MMIO backend plugs in the
+same interface for synthesis (Phase 11).
+
+```sh
+make axil-server          # build the Verilator co-sim server once
+cd scripts && python3     # or: make python-test to run the pytest suite
+```
+
+```python
+from dbqa import Query, VerilatorBackend
+
+backend = VerilatorBackend()
+schema = {"id": 0, "age": 1, "salary": 2, "extra": 3}
+
+# Load an 8-row table (id, age, salary, extra).
+table = [[i, 10 * (i + 1), 3 * i, 0] for i in range(8)]
+backend.load_table(table)
+
+# Classic aggregation: SUM(salary) WHERE age >= 30. AVG is sum / count.
+r = (Query(backend, schema)
+     .where("age", ">=", 30)
+     .sum("salary")
+     .limit(8)
+     .execute())
+print(r.count, r.result, r.avg)     # 6, 81, 13.5
+
+# GROUP BY id, SUM(salary) over the same table.
+groups = (Query(backend, schema)
+          .group_by("id")
+          .sum("salary")
+          .limit(8)
+          .execute())
+print([(g.key, g.sum) for g in groups])
+```
+
 ## Engineering standards
 
 SystemVerilog:
@@ -164,13 +204,15 @@ pipeline. The remaining phases add scale and tooling.
 | Operators               | ✅ Phases 3–6                           |
 | Scheduler + top         | ✅ Phase 7 (AXI-Lite, full queries)     |
 | Random / perf TBs       | 🔜 Phase 8                              |
-| Python control plane    | 🔜 Phase 9                              |
+| Python control plane    | ✅ Phase 9 (fluent API + Verilator co-sim) |
 | Formal verification     | 🔜 Phase 10                             |
 | Synthesis (XC7A35T)     | 🔜 Phase 11                             |
 | Documentation           | 🔜 Phase 12                             |
 
 Verilator testbenches run in CI: `make sim` builds and runs all ten TBs
-(`tb_smoke`…`tb_top`) with a CTest exit code per test.
+(`tb_smoke`…`tb_top`) with a CTest exit code per test. The Python control
+plane is exercised by `make python-test` (pytest, including end-to-end
+queries against the Verilator model).
 
 ## License
 

@@ -61,7 +61,7 @@ RTL_SRCS := \
 TBS := tb_smoke tb_fifo tb_reader tb_predicate tb_projection tb_aggregation tb_groupby tb_scheduler tb_axilite tb_top
 
 # ---------------------------------------------------------------------------
-.PHONY: help all configure build sim test lint format format-check formal synth clean tb_%
+.PHONY: help all configure build sim test lint format format-check formal synth clean tb_% axil-server python-test
 
 help:
 	@echo 'Usage: make [target]'
@@ -75,6 +75,10 @@ help:
 	@echo '  lint          Verilator --lint-only over all RTL sources'
 	@echo '  format        Reformat all SystemVerilog with Verible (inplace)'
 	@echo '  format-check  Verify all SystemVerilog matches Verible style'
+	@echo ''
+	@echo 'Python control plane (Phase 9)'
+	@echo '  axil-server   Build the Verilator co-simulation server'
+	@echo '  python-test   Build axil-server, then run the pytest suite'
 	@echo ''
 	@echo 'Formal and synthesis'
 	@echo '  formal        Run SymbiYosys formal proofs  (enabled in Phase 10)'
@@ -108,6 +112,15 @@ tb_%: configure
 	else \
 		echo "error: no runnable artifact found for '$@'"; exit 1; \
 	fi
+
+# ---------------------------------------------------------------------------
+# Python control plane (Phase 9).
+# ---------------------------------------------------------------------------
+axil-server: configure
+	$(CMAKE) --build $(BUILD_DIR) --target axil_server
+
+python-test: axil-server
+	cd scripts && PYTHONPATH=.:$${PYTHONPATH:-} python3 -m pytest tests/ -v
 
 # ---------------------------------------------------------------------------
 # RTL lint. Degenerates gracefully while RTL_SRCS is still empty.

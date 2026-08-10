@@ -27,6 +27,7 @@ query is configured over AXI-Lite.
   (`GROUP_BY_BUCKETS`, default 256).
 - **AXI-Lite control plane** — documented register map: query type,
   predicates, column select, aggregation, start / status / result.
+  See [`docs/register_map.md`](docs/register_map.md).
 - **Python query compiler** — `query.select("salary").where("age",">",30)
   .sum().execute()` compiles to register writes; `avg = sum / count`.
 - **Verification** — C++20 self-checking testbenches with scoreboards against
@@ -46,7 +47,14 @@ query is configured over AXI-Lite.
                     │
   ┌─────────────────┴─────────────────┐
   │         Query Accelerator         │
-  │                                    │
+  │  ┌─────────────────────────────┐  │
+  │  │  AXI-Lite slave (registers) │  │
+  │  └───────┬──────────┬──────────┘  │
+  │          │ config   │ status      │
+  │  ┌───────▼──────────▼──────────┐  │
+  │  │       Query scheduler       │  │
+  │  └───────┬─────────────────────┘  │
+  │          │                        │
   │  Column Reader  ──► Predicate  ──►│
   │        │             │            │
   │        ▼             ▼            │
@@ -60,6 +68,10 @@ query is configured over AXI-Lite.
                     ▼
          AXI-Stream Result Output
 ```
+
+Classic aggregation results (`COUNT`, `SUM`, `MIN`, `MAX`, `AVG`, overflow)
+are read back over AXI-Lite; GROUP BY results stream out the AXI-Stream
+master, one beat per group.
 
 Columns are stored independently (`age`, `salary`, `department`, …) — never
 row-wise. Each stage consumes and produces one element per cycle when not
@@ -104,10 +116,12 @@ make build            # or: cmake --build build
 make sim              # or: ctest --test-dir build --output-on-failure
 ```
 
-Run a single testbench:
+Run a single testbench (every module has its own self-checking TB):
 
 ```sh
-make tb_pipeline
+make tb_top            # full accelerator over AXI-Lite
+make tb_scheduler      # query execution core
+make tb_axilite        # AXI-Lite register file
 ```
 
 Lint all RTL:
@@ -116,11 +130,9 @@ Lint all RTL:
 make lint
 ```
 
-Capture waveforms (off by default):
-
-```sh
-DBQA_TRACE=1 make tb_pipeline     # or: WAVES=1
-```
+Waveform capture is planned but not yet wired into the Verilator testbenches
+(Phases 8/12); the `dbqa_test.hpp` trace gate (`DBQA_TRACE`) is reserved for
+it.
 
 ## Engineering standards
 
@@ -141,18 +153,24 @@ Verification:
 
 ## Status
 
+Phases 0–7 are complete: the accelerator is a working, verified end-to-end
+pipeline. The remaining phases add scale and tooling.
+
 | Area                    | Status                                  |
 | ----------------------- | --------------------------------------- |
-| Repository skeleton     | ✅ Phase 0 (this commit)                 |
-| Core RTL + primitives   | 🔜 Phase 1 (db_pkg, AXI-Stream)          |
-| Columnar memory         | 🔜 Phase 2                              |
-| Operators               | 🔜 Phases 3–6                           |
-| Scheduler + top         | 🔜 Phase 7                              |
+| Repository skeleton     | ✅ Phase 0                              |
+| Core RTL + primitives   | ✅ Phase 1 (db_pkg, AXI-Stream)         |
+| Columnar memory         | ✅ Phase 2                              |
+| Operators               | ✅ Phases 3–6                           |
+| Scheduler + top         | ✅ Phase 7 (AXI-Lite, full queries)     |
 | Random / perf TBs       | 🔜 Phase 8                              |
 | Python control plane    | 🔜 Phase 9                              |
 | Formal verification     | 🔜 Phase 10                             |
 | Synthesis (XC7A35T)     | 🔜 Phase 11                             |
 | Documentation           | 🔜 Phase 12                             |
+
+Verilator testbenches run in CI: `make sim` builds and runs all ten TBs
+(`tb_smoke`…`tb_top`) with a CTest exit code per test.
 
 ## License
 

@@ -18,6 +18,7 @@
 //  sim/column_reader_tb_top.sv
 // ===========================================================================
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -42,6 +43,7 @@ struct ReaderPorts {
     std::function<void(uint32_t)>       set_load_addr;
     std::function<void(int, uint32_t)>  set_load_data;   // (column, value)
     std::function<void(uint32_t)>       set_start;
+    std::function<void(uint32_t)>       set_scan_bound;
     std::function<void(uint32_t)>       set_m_ready;
     std::function<bool()>               get_busy;
     std::function<bool()>               get_done;
@@ -68,6 +70,7 @@ void run_query(ReaderPorts& p, std::function<void()> tick, uint32_t seed,
 
     // Load the table.
     p.set_start(0);
+    p.set_scan_bound(0);  // full scan by default
     for (int r = 0; r < p.num_rows; ++r) {
         p.set_load_wen(1);
         p.set_load_addr(static_cast<uint32_t>(r));
@@ -117,6 +120,71 @@ void run_query(ReaderPorts& p, std::function<void()> tick, uint32_t seed,
 }
 
 // ---------------------------------------------------------------------------
+// Bounded scan: scan_bound stops the BRAM traversal early. Exactly `bound`
+// rows (or the whole table if bound == 0 / bound >= num_rows) are emitted,
+// with tlast on the final emitted row.
+// ---------------------------------------------------------------------------
+void run_bounded_query(ReaderPorts& p, std::function<void()> tick,
+                       uint32_t seed, uint32_t bound) {
+    std::mt19937 rng(seed);
+    const uint32_t mask =
+        (p.col_width >= 32) ? 0xFFFFFFFFu : ((1u << p.col_width) - 1);
+
+    std::vector<std::vector<uint32_t>> table(
+        p.num_rows, std::vector<uint32_t>(p.num_cols));
+    for (int r = 0; r < p.num_rows; ++r)
+        for (int c = 0; c < p.num_cols; ++c) table[r][c] = rng() & mask;
+
+    p.set_start(0);
+    for (int r = 0; r < p.num_rows; ++r) {
+        p.set_load_wen(1);
+        p.set_load_addr(static_cast<uint32_t>(r));
+        for (int c = 0; c < p.num_cols; ++c)
+            p.set_load_data(c, table[r][c]);
+        tick();
+    }
+    p.set_load_wen(0);
+    tick();
+
+    const int expect =
+        (bound == 0) ? p.num_rows : std::min<int>(bound, p.num_rows);
+
+    p.set_scan_bound(bound);
+    p.set_start(1);
+    tick();
+    p.set_start(0);
+    dbqa::check(p.get_busy(), "bounded: busy asserted after start");
+
+    int got = 0;
+    for (int cyc = 0; cyc < 8 * p.num_rows + 64 && got < expect; ++cyc) {
+        const bool valid = p.get_m_valid();
+        p.set_m_ready(1);
+        if (valid) {
+            for (int c = 0; c < p.num_cols; ++c) {
+                char msg[64];
+                std::snprintf(msg, sizeof msg, "bounded row %d col %d data", got,
+                              c);
+                dbqa::expect_eq(msg, table[got][c], p.get_m_col(c));
+            }
+            dbqa::check(p.get_m_last() == (got == expect - 1),
+                        "bounded: tlast on the final emitted row");
+            ++got;
+        }
+        tick();
+    }
+    dbqa::expect_eq("bounded: rows received", expect, got);
+    dbqa::check(p.get_done(), "bounded: done asserted");
+    dbqa::check(!p.get_busy(), "bounded: busy deasserted after done");
+
+    for (int cyc = 0; cyc < 32; ++cyc) {
+        p.set_m_ready(1);
+        tick();
+        if (!p.get_m_valid()) break;
+    }
+    dbqa::check(!p.get_m_valid(), "bounded: output FIFO drained");
+}
+
+// ---------------------------------------------------------------------------
 // Memory stress: controlled stall profiles plus tready-gating correctness.
 //
 //   stall_start : hold m_axis_tready low for N cycles once the output first
@@ -141,6 +209,7 @@ void run_stress(ReaderPorts& p, std::function<void()> tick, uint32_t seed,
 
     // Load the table.
     p.set_start(0);
+    p.set_scan_bound(0);  // full scan by default
     for (int r = 0; r < p.num_rows; ++r) {
         p.set_load_wen(1);
         p.set_load_addr(static_cast<uint32_t>(r));
@@ -223,6 +292,11 @@ int main() {
     Vcolumn_reader_tb_top dut;
     dut.clk = 0;
     dut.rst = 1;
+    dut.s0_scan_bound = 0;
+    dut.s1_scan_bound = 0;
+    dut.s2_scan_bound = 0;
+    dut.s3_scan_bound = 0;
+    dut.s4_scan_bound = 0;
     dut.eval();
 
     auto tick = [&]() {
@@ -241,6 +315,7 @@ int main() {
     p0.set_load_addr = [&](uint32_t v) { dut.s0_load_addr = v; };
     p0.set_load_data = [&](int c, uint32_t v) { dut.s0_load_data[c] = v; };
     p0.set_start = [&](uint32_t v) { dut.s0_start = v; };
+    p0.set_scan_bound = [&](uint32_t v) { dut.s0_scan_bound = v; };
     p0.set_m_ready = [&](uint32_t v) { dut.m0_axis_tready = v; };
     p0.get_busy = [&]() { return dut.m0_busy; };
     p0.get_done = [&]() { return dut.m0_done; };
@@ -259,6 +334,7 @@ int main() {
             p.set_load_addr = [&](uint32_t v) { dut.s1_load_addr = v; };
             p.set_load_data = [&](int c, uint32_t v) { dut.s1_load_data[c] = v; };
             p.set_start     = [&](uint32_t v) { dut.s1_start = v; };
+            p.set_scan_bound = [&](uint32_t v) { dut.s1_scan_bound = v; };
             p.set_m_ready   = [&](uint32_t v) { dut.m1_axis_tready = v; };
             p.get_busy      = [&]() { return dut.m1_busy; };
             p.get_done      = [&]() { return dut.m1_done; };
@@ -276,6 +352,7 @@ int main() {
             p.set_load_addr = [&](uint32_t v) { dut.s2_load_addr = v; };
             p.set_load_data = [&](int c, uint32_t v) { dut.s2_load_data[c] = v; };
             p.set_start     = [&](uint32_t v) { dut.s2_start = v; };
+            p.set_scan_bound = [&](uint32_t v) { dut.s2_scan_bound = v; };
             p.set_m_ready   = [&](uint32_t v) { dut.m2_axis_tready = v; };
             p.get_busy      = [&]() { return dut.m2_busy; };
             p.get_done      = [&]() { return dut.m2_done; };
@@ -293,6 +370,7 @@ int main() {
             p.set_load_addr = [&](uint32_t v) { dut.s3_load_addr = v; };
             p.set_load_data = [&](int c, uint32_t v) { dut.s3_load_data[c] = v; };
             p.set_start     = [&](uint32_t v) { dut.s3_start = v; };
+            p.set_scan_bound = [&](uint32_t v) { dut.s3_scan_bound = v; };
             p.set_m_ready   = [&](uint32_t v) { dut.m3_axis_tready = v; };
             p.get_busy      = [&]() { return dut.m3_busy; };
             p.get_done      = [&]() { return dut.m3_done; };
@@ -310,6 +388,7 @@ int main() {
             p.set_load_addr = [&](uint32_t v) { dut.s4_load_addr = v; };
             p.set_load_data = [&](int c, uint32_t v) { dut.s4_load_data[c] = v; };
             p.set_start     = [&](uint32_t v) { dut.s4_start = v; };
+            p.set_scan_bound = [&](uint32_t v) { dut.s4_scan_bound = v; };
             p.set_m_ready   = [&](uint32_t v) { dut.m4_axis_tready = v; };
             p.get_busy      = [&]() { return dut.m4_busy; };
             p.get_done      = [&]() { return dut.m4_done; };
@@ -358,6 +437,15 @@ int main() {
     run_stress(p0, tick, 0xCAFEu, 0, 200);
     //  - back-to-back single-row queries
     for (int q = 0; q < 24; ++q) run_query(p1, tick, 0x5000u + q, true);
+
+    // Bounded scans: scan_bound stops the traversal early.
+    run_bounded_query(p0, tick, 0xBA5Eu, 1);    // single row
+    run_bounded_query(p0, tick, 0xBA5Fu, 64);   // 64 of 1024 rows
+    run_bounded_query(p0, tick, 0xBA60u, 256);  // 256 of 1024 rows
+    run_bounded_query(p0, tick, 0xBA61u, 1023); // largest representable bound
+    run_bounded_query(p0, tick, 0xBA62u, 0);    // 0 = full table
+    run_bounded_query(p2, tick, 0xBA63u, 2);    // 2 of 3 rows
+    run_bounded_query(p2, tick, 0xBA64u, 3);    // bound == table size
 
     return dbqa::summary("tb_reader");
 }

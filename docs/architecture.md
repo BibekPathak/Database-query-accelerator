@@ -52,7 +52,10 @@ tdata = { pass(1) , col[NUM_COLS-1] ... col[1] , col[0] }   // packed, MSB first
 
 The banks use a 1-cycle synchronous read, so the reader sustains **1 row per
 2 cycles** (a fetch-ahead design would overrun the single read slot on a
-stall). Backpressure is absorbed by a small output FIFO.
+stall). The reader takes a **`scan_bound`** (0 = full table): a bounded query
+stops the BRAM traversal at row `scan_bound-1` (which carries `tlast`) instead
+of walking the whole table, so latency scales with the requested scan size.
+Backpressure is absorbed by a small output FIFO.
 
 ### Default parameters (`db_pkg`)
 
@@ -108,7 +111,10 @@ backpressure at the reader output.
 Every access costs a few cycles (2-cycle BRAM read + write), so a GROUP BY
 query is slower than a classic scan — and the cost grows sharply once the
 number of distinct keys exceeds `GROUP_BY_BUCKETS` (see
-`docs/performance.md`).
+`docs/performance.md`). As a **bounded-accelerator policy**, the engine
+supports up to `GROUP_BY_BUCKETS` (256) resident groups per query; additional
+groups are rejected when the hash table is exhausted (the row is dropped),
+never spilled into unbounded memory.
 
 ## Query execution (control flow)
 
@@ -124,10 +130,10 @@ number of distinct keys exceeds `GROUP_BY_BUCKETS` (see
    (AVG = `sum / count` in software); GROUP BY groups from the AXI-Stream
    master.
 
-The `num_rows` limiter truncates the *forwarded* stream (after `num_rows`
-rows it forces `tlast` and swallows the rest while the reader drains) — it
-does **not** make the scan faster, because the reader always walks all
-`NUM_ROWS` rows.
+The `num_rows` query field is passed to the reader as its `scan_bound`: a
+bounded query actually stops the BRAM traversal early (≈ 2·`num_rows` cycles)
+instead of walking the whole table, and the bounded stream carries exactly one
+end-of-stream.
 
 Abort (`REG_CTRL` bit 1) pulses a synchronous reset of the scheduler core,
 cancelling an in-flight query while keeping the register file and loaded

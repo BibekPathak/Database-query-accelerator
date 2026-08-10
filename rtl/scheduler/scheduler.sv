@@ -12,10 +12,10 @@
 //    * on `start` the reader and the aggregation stage begin together; beats
 //      flow reader -> predicate -> projection -> aggregation under normal
 //      ready/valid backpressure
-//    * query_cfg.num_rows (0 = full table) truncates the scan: after that
-//      many rows are forwarded, a tlast is forced and the remaining rows are
-//      swallowed while the reader drains, so aggregation still sees exactly
-//      one end-of-stream
+//    * query_cfg.num_rows (0 = full table) is passed to the reader as its
+//      scan bound, so a bounded query actually stops the BRAM traversal early
+//      and finishes in ~2*num_rows cycles; the bounded stream carries exactly
+//      one end-of-stream (tlast)
 //    * completion is signalled when the aggregation stage has finished AND
 //      the reader is idle again (guarantees no stale rows in the reader FIFO
 //      when a new query starts)
@@ -80,7 +80,7 @@ module scheduler #(
   // -------------------------------------------------------------------------
   // Column reader
   // -------------------------------------------------------------------------
-  logic rd_tvalid, rd_tready, rd_tlast;
+  logic rd_tvalid, rd_tlast;
   logic [DATA_W-1:0] rd_tdata;
   /* verilator lint_off UNUSEDSIGNAL */
   logic reader_start, reader_busy, reader_done;
@@ -97,35 +97,20 @@ module scheduler #(
       .load_addr    (load_addr),
       .load_data    (load_data),
       .start        (reader_start),
+      .scan_bound   (query_cfg.num_rows),
       .busy         (reader_busy),
       .done         (reader_done),
       .m_axis_tvalid(rd_tvalid),
-      .m_axis_tready(rd_tready),
+      .m_axis_tready(pred_s_ready),
       .m_axis_tdata (rd_tdata),
       .m_axis_tlast (rd_tlast)
   );
 
   // -------------------------------------------------------------------------
-  // Row limiter: forward query_cfg.num_rows rows (0 = all), then force the
-  // end-of-stream and swallow the remaining rows while the reader drains.
+  // Predicate, projection and aggregation stages. The reader bounds the scan
+  // itself (query_cfg.num_rows), so its stream feeds the predicate directly.
   // -------------------------------------------------------------------------
-  logic [COL_ADDR_W-1:0] rem_q;
-  logic                  limit_active_q;
-  logic                  swallow_q;
-  logic lim_valid, lim_tlast;
-  logic [DATA_W-1:0] lim_tdata;
-  logic              pred_s_ready;
-  logic              fwd;
-
-  assign lim_tdata = rd_tdata;
-  assign lim_valid = rd_tvalid && !swallow_q;
-  assign lim_tlast = (limit_active_q && (rem_q == COL_ADDR_W'(1))) ? 1'b1 : rd_tlast;
-  assign rd_tready = swallow_q ? 1'b1 : pred_s_ready;
-  assign fwd       = lim_valid && pred_s_ready;
-
-  // -------------------------------------------------------------------------
-  // Predicate, projection and aggregation stages
-  // -------------------------------------------------------------------------
+  logic pred_s_ready;
   logic pred_tvalid, pred_tready, pred_tlast;
   logic [DATA_W-1:0] pred_tdata;
   logic proj_tvalid, proj_tready, proj_tlast;
@@ -143,10 +128,10 @@ module scheduler #(
       .clk          (clk),
       .rst          (rst),
       .pred_cfg     (pred_cfg),
-      .s_axis_tvalid(lim_valid),
+      .s_axis_tvalid(rd_tvalid),
       .s_axis_tready(pred_s_ready),
-      .s_axis_tdata (lim_tdata),
-      .s_axis_tlast (lim_tlast),
+      .s_axis_tdata (rd_tdata),
+      .s_axis_tlast (rd_tlast),
       .m_axis_tvalid(pred_tvalid),
       .m_axis_tready(pred_tready),
       .m_axis_tdata (pred_tdata),
@@ -213,29 +198,12 @@ module scheduler #(
 
   always_ff @(posedge clk) begin
     if (rst) begin
-      state_q        <= S_IDLE;
-      result_q       <= '0;
-      count_q        <= '0;
-      overflow_q     <= 1'b0;
-      error_q        <= db_pkg::ERR_NONE;
-      rem_q          <= '0;
-      limit_active_q <= 1'b0;
-      swallow_q      <= 1'b0;
+      state_q    <= S_IDLE;
+      result_q   <= '0;
+      count_q    <= '0;
+      overflow_q <= 1'b0;
+      error_q    <= db_pkg::ERR_NONE;
     end else begin
-      // Row limiter counters.
-      if (qstart) begin
-        rem_q          <= (query_cfg.num_rows == '0) ? '0 : query_cfg.num_rows;
-        limit_active_q <= (query_cfg.num_rows != '0);
-        swallow_q      <= 1'b0;
-      end else if (fwd && limit_active_q) begin
-        if (rem_q == COL_ADDR_W'(1)) begin
-          swallow_q <= 1'b1;
-          rem_q     <= '0;
-        end else begin
-          rem_q <= rem_q - 1'b1;
-        end
-      end
-
       // Control FSM.
       case (state_q)
         S_IDLE: begin

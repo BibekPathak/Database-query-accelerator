@@ -11,7 +11,9 @@ workloads over a full 1024-row table.
 |-----------------------|-----:|-------:|-----------:|------------------:|
 | COUNT, full table     | 1024 |   2052 |      0.499 |          49.9 M  |
 | SUM, full table       | 1024 |   2052 |      0.499 |          49.9 M  |
-| SUM, first 256 rows   |  256 |   2052 |      0.125 |          12.5 M  |
+| SUM, first 64 rows    |   64 |    132 |      0.485 |          48.5 M  |
+| SUM, first 256 rows   |  256 |    516 |      0.496 |          49.6 M  |
+| SUM, first 512 rows   |  512 |   1028 |      0.498 |          49.8 M  |
 | SUM, first 1024 rows  | 1024 |   2052 |      0.499 |          49.9 M  |
 | GROUP BY, 13 keys     | 1024 |   5396 |      0.190 |          19.0 M  |
 | GROUP BY, 1024 keys   | 1024 | 131076 |      0.008 |           0.78 M |
@@ -19,23 +21,40 @@ workloads over a full 1024-row table.
 `rows/s @ 100 MHz` assumes the 100 MHz clock from `synth/constraints.xdc`;
 scale linearly with the achieved Fmax.
 
-## Two findings worth understanding
-
-### 1. The reader always walks the whole table (~0.5 rows/cycle)
-
-`SUM first 256 rows` and `SUM full` take the **same** 2052 cycles. `num_rows`
-truncates the stream that reaches the aggregation (fewer rows are forwarded)
-but the reader still scans all 1024 rows — the truncated tail is swallowed,
-not skipped. This is a deliberate simplicity/safety trade-off (the reader has
-no stop-row address). If per-query scan ranges matter, a bounded "scan until
-row N" reader would cut latency for short queries at the cost of extra
-control logic.
-
 Classic scans run at the reader's intrinsic rate of **1 row / 2 cycles**
-(0.5 rows/cycle) because of the 1-cycle BRAM read latency. The 2052-cycle
-baseline is ~2048 scan cycles plus pipeline fill/drain.
+(0.5 rows/cycle) because of the 1-cycle BRAM read latency: the 2052-cycle
+full-scan baseline is ~2048 scan cycles plus pipeline fill/drain, and the
+short-scan workloads (132 / 516 / 1028 cycles for 64 / 256 / 512 rows) scale
+linearly with the requested scan size.
 
-### 2. GROUP BY degrades sharply above 256 distinct keys
+## Why a bounded scan was needed (a resolved trade-off)
+
+**Before** the reader was parameterized, *every* query cost 2052 cycles: the
+column reader always walked all 1024 rows, and `num_rows` only truncated the
+stream that reached the aggregation (the tail was swallowed, not skipped).
+`SUM first 256 rows` and `SUM full` therefore took the **same** time.
+
+That is a good question to be asked in an interview: *"Why doesn't `LIMIT 256`
+reduce your execution time?"* The honest answer is that the original reader
+was a fixed 1024-row scan — `num_rows` limited the *output semantics* but not
+the *memory traversal*.
+
+**After** the fix, the reader takes a `scan_bound` (0 = full table) and stops
+the BRAM traversal at row `scan_bound-1`, carrying `tlast` on that row. Query
+latency now scales with the requested scan:
+
+| Scan size | Before (cycles) | After (cycles) |
+|----------:|----------------:|---------------:|
+|        64 |            2052 |             132 |
+|       256 |            2052 |             516 |
+|       512 |            2052 |            1028 |
+|      1024 |            2052 |            2052 |
+
+This changed the reader (`scan_bound` port, early termination + `tlast`/`done`
+at the bound) and removed the scheduler's now-redundant row limiter, which
+existed only to truncate a stream the reader used to always over-produce.
+
+## GROUP BY degrades sharply above 256 distinct keys
 
 - 13 distinct keys: 5396 cycles (~0.19 rows/cycle).
 - 1024 distinct keys: 131076 cycles (~0.008 rows/cycle) — **24× slower**.
@@ -50,8 +69,12 @@ distinct keys the table overfills:
   before the documented **drop-on-exhaustion** policy discards them — the
   worst case is ~256 probes per dropped row.
 
-This is the expected cost of a bounded hash table. Mitigations, in order of
-effort:
+**Bounded-accelerator policy:** GROUP BY supports up to 256 resident groups
+per query; additional groups are rejected when the hash table is exhausted.
+This is a deliberate trade-off for a fixed-resource BRAM hash table — the
+accelerator never silently overflows into unbounded memory.
+
+Mitigations, in order of effort:
 
 1. Increase `GROUP_BY_BUCKETS` (BRAM usage grows accordingly — see
    `docs/synthesis.md`).

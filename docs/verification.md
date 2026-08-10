@@ -82,11 +82,21 @@ shadow models, so they run on both the native yosys frontend (CI) and the
 WASM builds. A deliberately-broken FIFO is caught by the `axis_fifo` proof,
 confirming the properties are non-vacuous.
 
-**Toolchain note**: the yosys SystemVerilog frontend rejects `$bits()` and
-package imports, so the formal flow reads a formal-only `db_pkg` replica
-(`formal/db_pkg_formal.sv`) and import-free copies of the two engines
-(`formal/*_f.sv`). These mirror the RTL (see their headers) and must be kept
-in sync.
+**Toolchain note — why formal uses a Yosys-compatible abstraction.** The
+production RTL is verified with Verilator. For formal verification, a
+Yosys-compatible abstraction of selected modules is maintained because the
+installed yosys SystemVerilog frontend does not support several constructs
+used by the production RTL (`$bits()`, package `import`, `@(posedge clk)`,
+`$past`). Specifically:
+
+- `formal/db_pkg_formal.sv` — a replica of `db_pkg` with the `$bits()`
+  width hardcoded.
+- `formal/count_engine_f.sv` / `formal/sum_engine_f.sv` — copies of the two
+  engines with the package `import` made explicit via qualified references.
+
+These files mirror the RTL (see their headers) and must be kept in sync; the
+abstraction is limited to the modules under formal proof, and every other RTL
+module is verified solely by Verilator simulation.
 
 ## What is verified where
 

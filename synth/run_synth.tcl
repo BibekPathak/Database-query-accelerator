@@ -57,6 +57,7 @@ route_design
 # Reports.
 # ---------------------------------------------------------------------------
 report_utilization -file $out/synth_utilization.rpt
+report_utilization -hierarchical -file $out/synth_utilization_hier.rpt
 report_timing_summary -file $out/synth_timing.rpt
 report_power -file $out/synth_power.rpt
 

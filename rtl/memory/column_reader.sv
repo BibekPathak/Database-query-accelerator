@@ -23,6 +23,10 @@
 //
 //  Control:
 //    * start (1-cycle pulse) begins streaming from row 0
+//    * scan_bound (0 = full table) stops the BRAM traversal after that many
+//      rows: the scan ends at row scan_bound-1, which carries tlast. A bounded
+//      scan therefore finishes in ~2*scan_bound cycles instead of walking the
+//      whole table.
 //    * busy is high while rows are being pushed
 //    * done pulses (level) once the final row has been pushed into the FIFO
 //    * queries are serialized: assert start only after done, and consume the
@@ -51,9 +55,10 @@ module column_reader #(
     input logic [COLUMN_WIDTH-1:0] load_data[NUM_COLS],
 
     // Control
-    input  logic start,
-    output logic busy,
-    output logic done,
+    input  logic              start,
+    input  logic [ADDR_W-1:0] scan_bound,  // rows to scan; 0 = full table
+    output logic              busy,
+    output logic              done,
 
     // AXI-Stream master
     output logic                  m_axis_tvalid,
@@ -113,6 +118,13 @@ module column_reader #(
 
   assign fifo_tvalid = pending_q && busy_q;
 
+  // Last row to stream: scan_bound-1 (0 = full table, clamped to the table).
+  logic [ADDR_W-1:0] last_row;
+  assign last_row = (scan_bound == '0) ? ADDR_W'(LADDR)
+                   : ((scan_bound - 1'b1) < ADDR_W'(LADDR)
+                          ? (scan_bound - 1'b1)
+                          : ADDR_W'(LADDR));
+
   always_ff @(posedge clk) begin
     if (rst) begin
       raddr_q   <= '0;
@@ -130,7 +142,7 @@ module column_reader #(
       ret_row_q <= raddr_q;
       if (pending_q && fifo_s_ready) begin
         // A fresh row (bank_rdata, row ret_row_q) was accepted by the FIFO.
-        if (ret_row_q == ADDR_W'(LADDR)) begin
+        if (ret_row_q == last_row) begin
           busy_q    <= 1'b0;
           done_q    <= 1'b1;
           raddr_q   <= '0;
@@ -172,8 +184,8 @@ module column_reader #(
       .rst          (rst),
       .s_axis_tvalid(fifo_tvalid),
       .s_axis_tready(fifo_s_ready),
-      .s_axis_tdata ({1'b1, columns_packed}),       // pass=1 in the MSB
-      .s_axis_tlast (ret_row_q == ADDR_W'(LADDR)),
+      .s_axis_tdata ({1'b1, columns_packed}),  // pass=1 in the MSB
+      .s_axis_tlast (ret_row_q == last_row),
       .m_axis_tvalid(m_axis_tvalid),
       .m_axis_tready(m_axis_tready),
       .m_axis_tdata (m_axis_tdata),

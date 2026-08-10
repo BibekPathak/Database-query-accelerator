@@ -45,8 +45,40 @@ The design is small for a 35T (≈20.8K LUTs, 50 × 36Kb BRAM):
   accelerator should fit comfortably with a large margin. The 100 MHz clock is
   conservative for this design size.
 
-These are estimates pending an actual run; update `docs/performance.md` with
-the reported numbers once Vivado has run.
+These are estimates pending an actual run.
+
+## Target metrics to report after a Vivado run
+
+Fill these in from the `results/` reports once `make synth` has run on a
+Xilinx host (`synth_utilization.rpt`, `synth_timing.rpt`, `synth_power.rpt`,
+`synth_utilization_hier.rpt`):
+
+| Metric         | Value                        | Source                                |
+|----------------|------------------------------|---------------------------------------|
+| Device         | XC7A35T-1CPG236              | `synth_summary.csv` (part)            |
+| LUTs           | —                            | `synth_utilization.rpt`               |
+| FFs            | —                            | `synth_utilization.rpt`               |
+| BRAMs          | —                            | `synth_utilization.rpt`               |
+| DSPs           | —                            | `synth_utilization.rpt`               |
+| Fmax           | —                            | `synth_timing.rpt` (1/WNS + period)   |
+| WNS            | —                            | `synth_timing.rpt`                    |
+| TNS            | —                            | `synth_timing.rpt`                    |
+| Power          | —                            | `synth_power.rpt`                     |
+
+Per-module resource breakdown (from `synth_utilization_hier.rpt`):
+
+| Module                  | LUT | FF | BRAM | Fmax |
+|-------------------------|----:|---:|-----:|-----:|
+| column_memory ×4       |     |    |      |      |
+| predicate_engine        |     |    |      |      |
+| projection_engine       |     |    |      |      |
+| aggregation_top         |     |    |      |      |
+| groupby_engine          |     |    |      |      |
+| scheduler               |     |    |      |      |
+| axi_lite_slave          |     |    |      |      |
+
+Once populated, update `docs/performance.md` with the achieved Fmax and
+recompute the `rows/s @ 100 MHz` figures.
 
 ## Interpreting the reports
 

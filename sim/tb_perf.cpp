@@ -164,7 +164,9 @@ int main(int argc, char** argv) {
   const W workloads[] = {
       {"count_full", false, 1, 0, 0},
       {"sum_full", false, 1, 0, 0},
+      {"sum_64", false, 1, 0, 64},
       {"sum_256", false, 1, 0, 256},
+      {"sum_512", false, 1, 0, 512},
       {"sum_1024", false, 1, 0, 1024},
       {"groupby_13keys", true, 1, 2, 0},
       {"groupby_1024keys", true, 1, 0, 0},

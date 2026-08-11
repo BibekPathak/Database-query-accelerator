@@ -61,7 +61,7 @@ RTL_SRCS := \
 TBS := tb_smoke tb_fifo tb_reader tb_predicate tb_projection tb_aggregation tb_groupby tb_scheduler tb_axilite tb_top tb_stress tb_perf
 
 # ---------------------------------------------------------------------------
-.PHONY: help all configure build sim test lint format format-check formal synth clean tb_% axil-server python-test
+.PHONY: help all configure build sim test lint format format-check formal synth clean tb_% axil-server python-test python-demo
 
 help:
 	@echo 'Usage: make [target]'
@@ -79,6 +79,7 @@ help:
 	@echo 'Python control plane (Phase 9)'
 	@echo '  axil-server   Build the Verilator co-simulation server'
 	@echo '  python-test   Build axil-server, then run the pytest suite'
+	@echo '  python-demo   Build axil-server, then run the query demo'
 	@echo ''
 	@echo 'Formal and synthesis'
 	@echo '  formal        Run SymbiYosys formal proofs  (enabled in Phase 10)'
@@ -121,6 +122,9 @@ axil-server: configure
 
 python-test: axil-server
 	cd scripts && PYTHONPATH=.:$${PYTHONPATH:-} python3 -m pytest tests/ -v
+
+python-demo: axil-server
+	cd scripts && PYTHONPATH=.:$${PYTHONPATH:-} python3 -m dbqa.demo
 
 # ---------------------------------------------------------------------------
 # RTL lint. Degenerates gracefully while RTL_SRCS is still empty.

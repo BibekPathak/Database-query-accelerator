@@ -33,6 +33,7 @@
 
 #include "Vaxis_fifo_multi.h"
 #include "dbqa_test.hpp"
+#include "dbqa_trace.hpp"
 
 namespace {
 
@@ -93,6 +94,9 @@ void bind_instances(Vaxis_fifo_multi& dut, std::vector<Inst>& insts) {
         &dut.m3_axis_tlast, &dut.m3_axis_tdata));
 }
 
+std::unique_ptr<VerilatedFstC> g_tfp;  // opt-in FST trace
+vluint64_t g_trace_cycle = 0;
+
 // ---------------------------------------------------------------------------
 // Directed-test harness bound to a single instance.
 // ---------------------------------------------------------------------------
@@ -108,6 +112,7 @@ public:
     void reset_all(int cycles = 2) {
         dut.clk = 0;
         dut.eval();
+        dbqa::trace_dump(g_tfp.get(), ++g_trace_cycle);
         dut.rst = 1;
         for (auto& x : insts) {
             *x.s_valid = 0;
@@ -118,8 +123,10 @@ public:
         for (int c = 0; c < cycles; ++c) {
             dut.clk = 1;
             dut.eval();
+            dbqa::trace_dump(g_tfp.get(), ++g_trace_cycle);
             dut.clk = 0;
             dut.eval();
+            dbqa::trace_dump(g_tfp.get(), ++g_trace_cycle);
         }
         dut.rst = 0;
     }
@@ -134,8 +141,10 @@ public:
     void cycle() {
         dut.clk = 1;
         dut.eval();
+        dbqa::trace_dump(g_tfp.get(), ++g_trace_cycle);
         dut.clk = 0;
         dut.eval();
+        dbqa::trace_dump(g_tfp.get(), ++g_trace_cycle);
     }
 
     bool m_valid() const { return *i.m_valid; }
@@ -187,6 +196,7 @@ void random_phase(Vaxis_fifo_multi& dut, std::vector<Inst>& insts,
     for (int cyc = 0; cyc < cycles; ++cyc) {
         dut.clk = 0;
         dut.eval();
+        dbqa::trace_dump(g_tfp.get(), ++g_trace_cycle);
         const bool rst = (cyc < 2);
         dut.rst = rst;
 
@@ -221,6 +231,7 @@ void random_phase(Vaxis_fifo_multi& dut, std::vector<Inst>& insts,
 
         dut.clk = 1;
         dut.eval();
+        dbqa::trace_dump(g_tfp.get(), ++g_trace_cycle);
 
         for (auto& x : insts) {
             dbqa::check((*x.m_valid) == !x.ref.empty(),
@@ -240,6 +251,7 @@ void random_phase(Vaxis_fifo_multi& dut, std::vector<Inst>& insts,
     for (int cyc = 0; cyc < 520; ++cyc) {
         dut.clk = 0;
         dut.eval();
+        dbqa::trace_dump(g_tfp.get(), ++g_trace_cycle);
         bool all_drained = true;
         for (auto& x : insts) {
             const bool tvalid = *x.m_valid;
@@ -256,6 +268,7 @@ void random_phase(Vaxis_fifo_multi& dut, std::vector<Inst>& insts,
         }
         dut.clk = 1;
         dut.eval();
+        dbqa::trace_dump(g_tfp.get(), ++g_trace_cycle);
         if (all_drained) break;
     }
 
@@ -272,6 +285,7 @@ int main() {
     dut.clk = 0;
     dut.rst = 1;
     dut.eval();
+    g_tfp = dbqa::init_trace(dut, "results/tb_fifo.fst");
 
     std::vector<Inst> insts;
     bind_instances(dut, insts);

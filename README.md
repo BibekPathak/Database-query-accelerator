@@ -137,9 +137,14 @@ Lint all RTL:
 make lint
 ```
 
-Waveform capture is planned but not yet wired into the Verilator testbenches
-(Phases 8/12); the `dbqa_test.hpp` trace gate (`DBQA_TRACE`) is reserved for
-it.
+Capture FST waveforms (off by default, opt-in per run):
+
+```sh
+DBQA_TRACE=1 make tb_top     # writes results/tb_top.fst
+```
+
+Every Verilated testbench supports this (`DBQA_TRACE=1 make tb_<name>`); the
+trace is written to `results/<name>.fst` and can be opened with GTKWave.
 
 ## Python control plane
 

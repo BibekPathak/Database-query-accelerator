@@ -25,6 +25,7 @@
 
 #include "Vgroupby_engine.h"
 #include "dbqa_test.hpp"
+#include "dbqa_trace.hpp"
 
 namespace {
 
@@ -216,11 +217,14 @@ int main() {
   for (int i = 0; i < 5; ++i) dut.s_axis_tdata[i] = 0;
   dut.eval();
 
+  vluint64_t trace_cycle = 0;
+  auto tfp = dbqa::init_trace(dut, "results/tb_groupby.fst");
   auto tick = [&]() {
     dut.clk = 1;
     dut.eval();
     dut.clk = 0;
     dut.eval();
+    dbqa::trace_dump(tfp.get(), ++trace_cycle);
   };
   for (int i = 0; i < 2; ++i) tick();
   dut.rst = 0;

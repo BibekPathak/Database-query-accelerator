@@ -27,6 +27,7 @@
 #include "Vdbqa_top.h"
 #include "dbqa_reference.hpp"
 #include "dbqa_test.hpp"
+#include "dbqa_trace.hpp"
 
 namespace {
 
@@ -376,11 +377,14 @@ int main() {
   dut.m_axis_tready = 1;
   dut.eval();
 
+  vluint64_t trace_cycle = 0;
+  auto tfp = dbqa::init_trace(dut, "results/tb_top.fst");
   auto tick = [&]() {
     dut.clk = 1;
     dut.eval();
     dut.clk = 0;
     dut.eval();
+    dbqa::trace_dump(tfp.get(), ++trace_cycle);
   };
   for (int i = 0; i < 2; ++i) tick();
   dut.rst = 0;

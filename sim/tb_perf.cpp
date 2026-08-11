@@ -20,6 +20,7 @@
 #include "Vdbqa_top.h"
 #include "dbqa_reference.hpp"
 #include "dbqa_test.hpp"
+#include "dbqa_trace.hpp"
 
 namespace {
 
@@ -131,12 +132,14 @@ int main(int argc, char** argv) {
   dut.m_axis_tready = 1;  // continuously accept GROUP BY groups
   dut.eval();
 
+  auto tfp = dbqa::init_trace(dut, "results/tb_perf.fst");
   auto tick = [&]() {
     ++g_cycles;
     dut.clk = 1;
     dut.eval();
     dut.clk = 0;
     dut.eval();
+    dbqa::trace_dump(tfp.get(), g_cycles);
   };
   for (int i = 0; i < 2; ++i) tick();
   dut.rst = 0;

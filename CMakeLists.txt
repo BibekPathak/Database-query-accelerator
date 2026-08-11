@@ -94,6 +94,7 @@ set(DBQA_VERILATOR_FLAGS
     --timing        # enable $time / delays
     --assert        # elaborate SVA assertions in the simulation
     -DDBQA_ASSERT   # compile assertion blocks guarded by DBQA_ASSERT
+    --trace-fst     # opt-in FST waveform capture (DBQA_TRACE=1 at runtime)
     -Wall           # enable all lint warnings
     -Wno-fatal      # do not treat warnings as build failures
 )

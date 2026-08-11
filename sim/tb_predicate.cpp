@@ -27,6 +27,7 @@
 
 #include "Vpredicate_engine.h"
 #include "dbqa_test.hpp"
+#include "dbqa_trace.hpp"
 
 namespace {
 
@@ -163,11 +164,14 @@ int main() {
   dut.pred_cfg[1] = 0;
   dut.eval();
 
+  vluint64_t trace_cycle = 0;
+  auto tfp = dbqa::init_trace(dut, "results/tb_predicate.fst");
   auto tick = [&]() {
     dut.clk = 1;
     dut.eval();
     dut.clk = 0;
     dut.eval();
+    dbqa::trace_dump(tfp.get(), ++trace_cycle);
   };
   for (int i = 0; i < 2; ++i) tick();
   dut.rst = 0;

@@ -28,6 +28,7 @@
 
 #include "Vcolumn_reader_tb_top.h"
 #include "dbqa_test.hpp"
+#include "dbqa_trace.hpp"
 
 namespace {
 
@@ -299,11 +300,14 @@ int main() {
     dut.s4_scan_bound = 0;
     dut.eval();
 
+    vluint64_t trace_cycle = 0;
+    auto tfp = dbqa::init_trace(dut, "results/tb_reader.fst");
     auto tick = [&]() {
         dut.clk = 1;
         dut.eval();
         dut.clk = 0;
         dut.eval();
+        dbqa::trace_dump(tfp.get(), ++trace_cycle);
     };
 
     // Bind all instances.

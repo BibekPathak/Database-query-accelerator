@@ -3,9 +3,9 @@
 //
 //  Drives a pipeline_data_t stream through the group-by engine and verifies
 //  the {key, count, sum, min, max} groups streamed out against a C++ model of
-//  the same hash table: 256 BRAM buckets, hash = low byte of the key, linear
-//  probing on collision, and the documented drop-on-probe-exhaustion policy.
-//  SUM saturates at the ACCUM_W-bit maximum.
+//  the same hash table: 256 BRAM buckets, hash = XOR-fold of the key bytes,
+//  linear probing on collision, and the documented drop-on-probe-exhaustion
+//  policy. SUM saturates at the ACCUM_W-bit maximum.
 //
 //  Coverage:
 //    * single-row, multi-row folding (count/sum/min/max accumulation)
@@ -50,8 +50,16 @@ struct Row {
   bool pass;
 };
 
-// RTL-faithful hash table: 256 slots, hash = key[7:0], linear probing,
-// drop a row when the probe chain is exhausted (all 256 buckets probed).
+// Must match groupby_engine.hash_key: XOR-fold the four key bytes into the
+// 8-bit bucket address.
+uint32_t hash(uint32_t key) {
+  return (key & 0xFFu) ^ ((key >> 8) & 0xFFu) ^ ((key >> 16) & 0xFFu) ^
+         ((key >> 24) & 0xFFu);
+}
+
+// RTL-faithful hash table: 256 slots, hash = XOR-fold of the key bytes,
+// linear probing, drop a row when the probe chain is exhausted (all 256
+// buckets probed).
 struct RefTable {
   std::array<Slot, BUCKETS> slots;
 
@@ -60,7 +68,7 @@ struct RefTable {
   }
 
   void insert(uint32_t key, uint32_t v) {
-    const int h = static_cast<int>(key & 0xFFu);
+    const int h = static_cast<int>(hash(key));
     for (int p = 0; p < BUCKETS; ++p) {
       const int idx = (h + p) & (BUCKETS - 1);
       if (!slots[idx].valid) {
@@ -182,10 +190,10 @@ std::vector<Row> make_rows(size_t n, uint32_t seed, bool all_pass,
                            bool all_keys_collide) {
   std::mt19937 rng(seed);
   std::vector<Row> rows(n);
-  const uint32_t keyset[4] = {0, 7, 0x100, 0x1FF};  // low bytes collide
+  const uint32_t keyset[4] = {0, 0x01010101, 0x100, 7};  // 0 and 0x01010101 collide
   for (auto& r : rows) {
     r.key = all_keys_collide
-                ? (rng() % 2 == 0 ? 0u : 0x100u)  // both hash to bucket 0
+                ? (rng() % 2 == 0 ? 0u : 0x01010101u)  // both fold to bucket 0
                 : (rng() % 3 == 0 ? (uint32_t)rng() : keyset[rng() % 4]);
     r.value = rng();
     r.pass = all_pass ? true : (rng() % 2) != 0;
@@ -230,8 +238,8 @@ int main() {
   }
 
   {
-    // keys 0 and 0x100 both hash to bucket 0 -> linear probe to bucket 1.
-    std::vector<Row> rows = {{0, 5, true}, {0x100, 10, true}, {0, 15, true}};
+    // keys 0 and 0x01010101 both fold to bucket 0 -> linear probe to bucket 1.
+    std::vector<Row> rows = {{0, 5, true}, {0x01010101, 10, true}, {0, 15, true}};
     dbqa::check(run_query(dut, tick, rows, 0, 1) == 2,
                 "collision: two groups");
   }

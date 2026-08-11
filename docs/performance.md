@@ -60,8 +60,9 @@ existed only to truncate a stream the reader used to always over-produce.
 - 1024 distinct keys: 131076 cycles (~0.008 rows/cycle) — **24× slower**.
 
 The GROUP BY engine is a fixed-size hash table with `GROUP_BY_BUCKETS = 256`
-buckets and linear probing. Hash = the key's low 8 bits, so with more than 256
-distinct keys the table overfills:
+buckets and linear probing. The hash XOR-folds the key's bytes into the
+bucket address (removing low-byte collision bias), but with more than 256
+distinct keys the table is overfull regardless of hash quality:
 
 - Every key whose low byte collides with occupied buckets walks a longer probe
   chain (each probe is a 2-cycle BRAM read plus a process step).
@@ -74,13 +75,17 @@ per query; additional groups are rejected when the hash table is exhausted.
 This is a deliberate trade-off for a fixed-resource BRAM hash table — the
 accelerator never silently overflows into unbounded memory.
 
+**Hash quality note (measured):** the hash was changed from the key's low
+byte to an XOR-fold of all key bytes, which removes low-byte collision bias
+(robustness for real-world key patterns). It is **measured-neutral** on the two
+benchmark workloads — 13 keys have no collisions to begin with, and the 1024-key
+case is dominated by table overfill, so the fold does not change those numbers.
+
 Mitigations, in order of effort:
 
 1. Increase `GROUP_BY_BUCKETS` (BRAM usage grows accordingly — see
    `docs/synthesis.md`).
-2. Use a better hash than the low byte to spread keys (e.g., XOR-fold the key
-   into the bucket address).
-3. Switch to a two-pass / external sort-based GROUP BY for large key counts.
+2. Switch to a two-pass / external sort-based GROUP BY for large key counts.
 
 ## How to reproduce
 

@@ -8,7 +8,8 @@
 //  Buckets:
 //    * GROUP_BY_BUCKETS (default 256) fixed-size hash table in BRAM; each
 //      bucket stores {valid, key, count, sum, min, max}
-//    * hash = key[GROUP_BY_ADDR_W-1:0] (low bits); linear probing resolves
+//    * hash = XOR-fold of the key's BUCKET_ADDR_W-bit chunks (see hash_key);
+//      linear probing resolves
 //      collisions (probe the next bucket on a valid key mismatch)
 //    * if the probe chain is exhausted (all buckets probed), the row is
 //      dropped -- a documented policy for a fixed-size hash table
@@ -141,12 +142,16 @@ module groupby_engine #(
   pipeline_data_t beat;
   assign beat = pipeline_data_t'(s_axis_tdata);
 
-  // Hash: low bits of the key (only the low GROUP_BY_ADDR_W bits are used).
-  /* verilator lint_off UNUSEDSIGNAL */
+  // Hash: XOR-fold the key's four BUCKET_ADDR_W-bit chunks into the bucket
+  // address (valid for the default COLUMN_W == 4*BUCKET_ADDR_W). Folding
+  // rather than taking the low bits removes the low-byte bias so keys that
+  // share a low byte land in different buckets.
   function automatic logic [BUCKET_ADDR_W-1:0] hash_key(input logic [COLUMN_W-1:0] k);
-    return k[BUCKET_ADDR_W-1:0];
+    return k[BUCKET_ADDR_W-1:0]
+         ^ k[2*BUCKET_ADDR_W-1:BUCKET_ADDR_W]
+         ^ k[3*BUCKET_ADDR_W-1:2*BUCKET_ADDR_W]
+         ^ k[4*BUCKET_ADDR_W-1:3*BUCKET_ADDR_W];
   endfunction
-  /* verilator lint_on UNUSEDSIGNAL */
 
   // -------------------------------------------------------------------------
   // Bucket update for the row currently being read (place or fold).

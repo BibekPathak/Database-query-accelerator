@@ -100,7 +100,8 @@ backpressure at the reader output.
 
 - `GROUP_BY_BUCKETS` (256) buckets, each storing
   `{valid, key, count, sum, min, max}`.
-- Hash = the key's low 8 bits; **linear probing** resolves collisions.
+- Hash = XOR-fold of the key's bytes into the bucket address (removes
+  low-byte collision bias); **linear probing** resolves collisions.
 - If the probe chain is exhausted (all 256 buckets probed), the row is
   dropped — a documented policy for a fixed-size hash table.
 - At `start` the engine **clears every bucket** (a 256-cycle sweep), then

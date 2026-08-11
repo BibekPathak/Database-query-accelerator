@@ -273,10 +273,10 @@ int main() {
   // GROUP BY mode: stream routes to the group-by engine; result ports zeroed.
   // -------------------------------------------------------------------------
   {
-    // Folding + collision: keys 0 and 0x100 both hash to bucket 0 (linear
-    // probe to bucket 1); key 7 folds in its own bucket.
+    // Folding + collision: keys 0 and 0x01010101 both fold to bucket 0
+    // (linear probe to bucket 1); key 7 folds in its own bucket.
     std::vector<Beat> beats(5);
-    const uint32_t key0[5] = {0, 0, 7, 0x100, 0};
+    const uint32_t key0[5] = {0, 0, 7, 0x01010101, 0};
     const uint32_t val0[5] = {5, 15, 10, 20, 25};
     for (int i = 0; i < 5; ++i) {
       for (int c = 0; c < 4; ++c) beats[i].cols[c] = 0;
@@ -284,11 +284,13 @@ int main() {
       beats[i].cols[1] = val0[i];
       beats[i].pass = true;
     }
-    // Bucket order: key 0 -> bucket 0, key 0x100 (hash 0) -> bucket 1 via
-    // linear probe, key 7 -> bucket 7.
+    // Bucket order: key 0 -> bucket 0, key 0x01010101 (fold 0) -> bucket 1
+    // via linear probe, key 7 -> bucket 7.
     run_groupby_query(
         dut, tick, beats, 0, 1,
-        {{0, GroupOut{3, 45}}, {0x100, GroupOut{1, 20}}, {7, GroupOut{1, 10}}},
+        {{0, GroupOut{3, 45}},
+         {0x01010101, GroupOut{1, 20}},
+         {7, GroupOut{1, 10}}},
         0x600);
   }
 
